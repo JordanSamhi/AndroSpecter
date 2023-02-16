@@ -43,6 +43,7 @@ public class Constants {
     public static final String ANDROID_CONTENT_BROADCASTRECEIVER = "android.content.BroadcastReceiver";
     public static final String ANDROID_APP_SERVICE = "android.app.Service";
     public static final String ANDROID_CONTENT_CONTENTPROVIDER = "android.content.ContentProvider";
+    public static final String DUMMYMAINCLASS = "dummyMainClass";
 
     /**
      * Misc

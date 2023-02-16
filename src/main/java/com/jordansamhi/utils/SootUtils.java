@@ -42,9 +42,11 @@ public class SootUtils {
 
     private static SootUtils instance;
     private final Set<SootClass> nonLibraryClasses;
+    private final Set<SootClass> classes;
 
     public SootUtils() {
-        nonLibraryClasses = new HashSet<>();
+        this.nonLibraryClasses = new HashSet<>();
+        this.classes = new HashSet<>();
     }
 
     /**
@@ -148,15 +150,21 @@ public class SootUtils {
      */
     public int getNumberOfStmtInApp() {
         int total = 0;
-        for (SootClass sc : Scene.v().getApplicationClasses()) {
-            for (SootMethod sm : sc.getMethods()) {
-                if (sm.isConcrete() && sm.hasActiveBody()) {
-                    Body b = sm.getActiveBody();
-                    if (b != null) {
-                        total += b.getUnits().size();
-                    }
-                }
-            }
+        for (SootMethod sm : getAllMethods()) {
+            total += getNumberOfStmt(sm);
+        }
+        return total;
+    }
+
+    /**
+     * Returns the total number of statements in all application classes and methods except libraries
+     *
+     * @return the total number of statements in all application classes and methods except libraries
+     */
+    public int getNumberOfStmtInAppWithoutLibraries() {
+        int total = 0;
+        for (SootMethod sm : getAllMethodsExceptLibraries()) {
+            total += getNumberOfStmt(sm);
         }
         return total;
     }
@@ -261,9 +269,9 @@ public class SootUtils {
      * @param packageName the name of the package for which to retrieve all application methods
      * @return a set of all application methods that belong to the given package
      */
-    public Set<SootMethod> getApplicationMethods(String packageName) {
+    public Set<SootMethod> getMethodsFromPackage(String packageName) {
         Set<SootMethod> methods = new HashSet<>();
-        for (SootClass sc : Scene.v().getApplicationClasses()) {
+        for (SootClass sc : this.getClasses()) {
             if (sc.getName().startsWith(packageName)) {
                 if (sc.isConcrete()) {
                     for (SootMethod sm : sc.getMethods()) {
@@ -284,10 +292,26 @@ public class SootUtils {
      */
     public Set<SootMethod> getAllMethods() {
         Set<SootMethod> methods = new HashSet<>();
-        for (SootClass sc : Scene.v().getClasses()) {
+        for (SootClass sc : this.getClasses()) {
             methods.addAll(sc.getMethods());
         }
         return methods;
+    }
+
+    /**
+     * Returns a set of SootClass objects representing all classes in the Soot Scene except the Dummy Main Class
+     *
+     * @return a Set of SootClass objects representing all classes in the Soot Scene
+     */
+    public Set<SootClass> getClasses() {
+        if (this.classes.isEmpty()) {
+            for (SootClass sc : Scene.v().getClasses()) {
+                if (!isDummyMainClass(sc)) {
+                    this.classes.add(sc);
+                }
+            }
+        }
+        return this.classes;
     }
 
     /**
@@ -296,7 +320,7 @@ public class SootUtils {
      * @return a set of all the classes in the scene, including library classes.
      */
     public Set<SootClass> getAllClasses() {
-        return new HashSet<>(Scene.v().getClasses());
+        return new HashSet<>(this.getClasses());
     }
 
     /**
@@ -323,6 +347,7 @@ public class SootUtils {
 
     /**
      * Returns a set of all the methods in the given call graph.
+     *
      * @param cg the call graph to extract methods from
      * @return a set of all the methods in the given call graph
      */
@@ -345,12 +370,22 @@ public class SootUtils {
      */
     public Set<SootClass> getNonLibraryClasses() {
         if (this.nonLibraryClasses.isEmpty()) {
-            for (SootClass sc : Scene.v().getClasses()) {
+            for (SootClass sc : this.getClasses()) {
                 if (!LibrariesManager.v().isLibrary(sc)) {
                     this.nonLibraryClasses.add(sc);
                 }
             }
         }
         return this.nonLibraryClasses;
+    }
+
+    /**
+     * Checks whether the given SootClass is a dummy main class.
+     *
+     * @param sc the SootClass to check for dummy main class membership
+     * @return true if the SootClass is a dummy main class, false otherwise
+     */
+    public boolean isDummyMainClass(SootClass sc) {
+        return sc.getName().equals(Constants.DUMMYMAINCLASS);
     }
 }
