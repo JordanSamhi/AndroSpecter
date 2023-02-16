@@ -39,6 +39,11 @@ public class MethodSignatureConverter {
     public MethodSignatureConverter() {
     }
 
+    /**
+     * Returns the singleton instance of this class.
+     *
+     * @return The singleton instance of this class.
+     */
     public static MethodSignatureConverter v() {
         if (instance == null) {
             instance = new MethodSignatureConverter();
