@@ -27,7 +27,10 @@ package com.jordansamhi.utils;
 
 import com.jordansamhi.utils.files.LibrariesManager;
 import com.jordansamhi.utils.utils.Constants;
-import soot.*;
+import soot.Scene;
+import soot.SootClass;
+import soot.SootMethod;
+import soot.SootMethodRef;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
 import soot.util.Chain;
@@ -355,8 +358,14 @@ public class SootUtils {
         Set<SootMethod> methods = new HashSet<>();
         for (Edge edge : cg) {
             if (edge != null) {
-                methods.add(edge.src());
-                methods.add(edge.tgt());
+                SootMethod src = edge.src();
+                SootMethod tgt = edge.tgt();
+                if (!isDummyMainClass(src.getDeclaringClass())) {
+                    methods.add(src);
+                }
+                if (!isDummyMainClass(tgt.getDeclaringClass())) {
+                    methods.add(tgt);
+                }
             }
         }
         return methods;
