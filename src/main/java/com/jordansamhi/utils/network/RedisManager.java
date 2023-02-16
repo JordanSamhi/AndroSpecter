@@ -27,6 +27,10 @@ import redis.clients.jedis.Jedis;
  * #L%
  */
 
+/**
+ * RedisManager is a utility class for sending values to a Redis server. It connects to a specified Redis server using the
+ * given connection parameters, and can send a value to a specified list in the server.
+ */
 public class RedisManager {
 
     private final Jedis jedis;

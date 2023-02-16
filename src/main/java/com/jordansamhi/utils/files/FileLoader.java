@@ -32,6 +32,9 @@ import java.util.Set;
  * #L%
  */
 
+/**
+ * Abstract class to load a file into memory and extract relevant items into a set.
+ */
 public abstract class FileLoader {
 	protected Set<String> items;
 

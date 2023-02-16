@@ -8,6 +8,9 @@ import soot.jimple.infoflow.android.SetupApplication;
 import soot.jimple.infoflow.android.manifest.ProcessManifest;
 import soot.jimple.infoflow.config.IInfoflowConfig;
 
+/**
+ * A utility class for initializing and running Flowdroid analyses on Android apps.
+ */
 public class FlowdroidUtils {
 
     private ProcessManifest pm;

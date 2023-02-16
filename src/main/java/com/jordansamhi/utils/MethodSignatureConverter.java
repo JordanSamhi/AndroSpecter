@@ -28,6 +28,10 @@ package com.jordansamhi.utils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A utility class for converting Java method signatures to Soot method signatures, and extracting various components of
+ * method signatures (class name, method name, return type, and parameter names).
+ */
 public class MethodSignatureConverter {
 
     private static MethodSignatureConverter instance;

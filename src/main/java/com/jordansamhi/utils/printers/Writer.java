@@ -25,6 +25,9 @@ package com.jordansamhi.utils.printers;
  * #L%
  */
 
+/**
+ * Provides methods for printing messages to the console with different types of prefix indicators.
+ */
 public class Writer {
 
     private static Writer instance;

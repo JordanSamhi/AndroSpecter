@@ -25,6 +25,10 @@ package com.jordansamhi.utils;
  * #L%
  */
 
+/**
+ * This class provides a singleton instance of a temporary folder utility class
+ * that allows to get the path to the default temporary directory for the current system.
+ */
 public class TmpFolder {
 
     private static TmpFolder instance;

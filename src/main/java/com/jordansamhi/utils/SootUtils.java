@@ -34,6 +34,10 @@ import soot.util.Chain;
 
 import java.util.*;
 
+/**
+ * Utility class for working with the Soot framework. Provides various helper methods for working with Soot classes,
+ * methods, and call graphs.
+ */
 public class SootUtils {
 
     private static SootUtils instance;
@@ -318,12 +322,28 @@ public class SootUtils {
     }
 
     /**
+     * Returns a set of all the methods in the given call graph.
+     * @param cg the call graph to extract methods from
+     * @return a set of all the methods in the given call graph
+     */
+    public Set<SootMethod> getMethodsInCallGraph(CallGraph cg) {
+        Set<SootMethod> methods = new HashSet<>();
+        for (Edge edge : cg) {
+            if (edge != null) {
+                methods.add(edge.src());
+                methods.add(edge.tgt());
+            }
+        }
+        return methods;
+    }
+
+    /**
      * Returns a set of all non-library classes in the Soot Scene.
      * A non-library class is defined as any class that is not part of a library.
      *
      * @return a Set of SootClass objects representing non-library classes in the Soot Scene.
      */
-    private Set<SootClass> getNonLibraryClasses() {
+    public Set<SootClass> getNonLibraryClasses() {
         if (this.nonLibraryClasses.isEmpty()) {
             for (SootClass sc : Scene.v().getClasses()) {
                 if (!LibrariesManager.v().isLibrary(sc)) {

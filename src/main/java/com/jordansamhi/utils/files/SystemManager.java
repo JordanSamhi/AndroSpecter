@@ -28,6 +28,10 @@ import soot.SootClass;
  * #L%
  */
 
+/**
+ * Manages system classes by checking for system class membership of given Soot classes.
+ * Loads the list of system classes from a configuration file at startup.
+ */
 public class SystemManager extends FileLoader {
 
     private static SystemManager instance;
