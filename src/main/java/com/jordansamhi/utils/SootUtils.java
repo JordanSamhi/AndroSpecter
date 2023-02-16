@@ -173,6 +173,20 @@ public class SootUtils {
     }
 
     /**
+     * Returns the total number of statements in a collection of SootMethod objects.
+     *
+     * @param methods a collection of SootMethod objects
+     * @return the total number of statements in the given collection of SootMethod objects
+     */
+    public int getNumberOfStmt(Collection<SootMethod> methods) {
+        int total = 0;
+        for (SootMethod sm : methods) {
+            total += getNumberOfStmt(sm);
+        }
+        return total;
+    }
+
+    /**
      * Returns the number of edges in the given CallGraph.
      *
      * @param cg the CallGraph for which to count edges
