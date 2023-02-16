@@ -25,23 +25,29 @@ package com.jordansamhi.utils;
  * #L%
  */
 
+import com.jordansamhi.utils.files.LibrariesManager;
 import com.jordansamhi.utils.utils.Constants;
 import soot.*;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
 import soot.util.Chain;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class SootUtils {
 
     private static SootUtils instance;
+    private final Set<SootClass> nonLibraryClasses;
 
     public SootUtils() {
+        nonLibraryClasses = new HashSet<>();
     }
 
+    /**
+     * Returns the singleton instance of this class.
+     *
+     * @return The singleton instance of this class.
+     */
     public static SootUtils v() {
         if (instance == null) {
             instance = new SootUtils();
@@ -52,7 +58,7 @@ public class SootUtils {
     /**
      * Returns a SootMethodRef with the given class name and method name.
      *
-     * @param className the name of the class that contains the method
+     * @param className  the name of the class that contains the method
      * @param methodName the name of the method to return a reference to
      * @return a SootMethodRef to the SootMethod with the given class and method names
      * @throws RuntimeException if the method could not be found
@@ -69,13 +75,13 @@ public class SootUtils {
     }
 
     /**
-     * Returns a list of all superclasses of the given SootClass.
+     * Returns a set of all superclasses of the given SootClass.
      *
      * @param sootClass the SootClass for which to retrieve all superclasses
-     * @return a list of all superclasses of the given SootClass, including the immediate superclass
+     * @return a set of all superclasses of the given SootClass, including the immediate superclass
      */
-    public List<SootClass> getAllSuperClasses(SootClass sootClass) {
-        List<SootClass> classes = new ArrayList<>();
+    public Set<SootClass> getAllSuperClasses(SootClass sootClass) {
+        Set<SootClass> classes = new HashSet<>();
         SootClass superClass;
         if (sootClass.hasSuperclass()) {
             superClass = sootClass.getSuperclass();
@@ -86,13 +92,13 @@ public class SootUtils {
     }
 
     /**
-     * Returns a list of all interfaces implemented by the given SootClass.
+     * Returns a set of all interfaces implemented by the given SootClass.
      *
      * @param sootClass the SootClass for which to retrieve all interfaces
-     * @return a list of all interfaces implemented by the given SootClass
+     * @return a set of all interfaces implemented by the given SootClass
      */
-    public List<SootClass> getAllInterfaces(SootClass sootClass) {
-        List<SootClass> interfaces = new ArrayList<>();
+    public Set<SootClass> getAllInterfaces(SootClass sootClass) {
+        Set<SootClass> interfaces = new HashSet<>();
         Chain<SootClass> interfacesImplemented;
         if (sootClass.getInterfaceCount() > 0) {
             interfacesImplemented = sootClass.getInterfaces();
@@ -105,13 +111,13 @@ public class SootUtils {
     }
 
     /**
-     * Returns a list of the class names of the given list of SootClasses.
+     * Returns a set of the class names of the given list of SootClasses.
      *
      * @param classes the list of SootClasses for which to retrieve the class names
-     * @return a list of the class names of the given SootClasses
+     * @return a set of the class names of the given SootClasses
      */
-    public List<String> getClassNames(List<SootClass> classes) {
-        List<String> names = new ArrayList<>();
+    public Set<String> getClassNames(Collection<SootClass> classes) {
+        Set<String> names = new HashSet<>();
         for (SootClass sc : classes) {
             names.add(sc.getName());
         }
@@ -193,7 +199,7 @@ public class SootUtils {
      * @return the type of Android component for the given SootClass, or NON_COMPONENT if the SootClass does not correspond to an Android component
      */
     public String getComponentType(SootClass sc) {
-        List<SootClass> classes = getAllSuperClasses(sc);
+        Set<SootClass> classes = getAllSuperClasses(sc);
         for (SootClass c : classes) {
             switch (c.getName()) {
                 case Constants.ANDROID_APP_ACTIVITY:
@@ -213,7 +219,7 @@ public class SootUtils {
      * Checks whether the given SootMethod is in the given CallGraph.
      *
      * @param method the SootMethod to check for in the CallGraph
-     * @param cg the CallGraph to search for the SootMethod
+     * @param cg     the CallGraph to search for the SootMethod
      * @return true if the SootMethod is in the CallGraph, false otherwise
      */
     public boolean isInCallGraph(SootMethod method, CallGraph cg) {
@@ -231,7 +237,7 @@ public class SootUtils {
      * Checks whether the given SootMethod is called in the given CallGraph.
      *
      * @param method the SootMethod to check for in the CallGraph
-     * @param cg the CallGraph to search for calls to the SootMethod
+     * @param cg     the CallGraph to search for calls to the SootMethod
      * @return true if the SootMethod is called in the CallGraph, false otherwise
      */
     public boolean isCalledInCallGraph(SootMethod method, CallGraph cg) {
@@ -246,19 +252,18 @@ public class SootUtils {
     }
 
     /**
-     * Returns a list of all application methods that belong to the given package.
+     * Returns a set of all application methods that belong to the given package.
      *
      * @param packageName the name of the package for which to retrieve all application methods
-     * @return a list of all application methods that belong to the given package
+     * @return a set of all application methods that belong to the given package
      */
-    public List<SootMethod> getApplicationMethods(String packageName) {
-        List<SootMethod> methods = new ArrayList<>();
+    public Set<SootMethod> getApplicationMethods(String packageName) {
+        Set<SootMethod> methods = new HashSet<>();
         for (SootClass sc : Scene.v().getApplicationClasses()) {
             if (sc.getName().startsWith(packageName)) {
                 if (sc.isConcrete()) {
                     for (SootMethod sm : sc.getMethods()) {
-                        sm.retrieveActiveBody();
-                        if (sm.isConcrete() && sm.hasActiveBody()) {
+                        if (sm.isConcrete()) {
                             methods.add(sm);
                         }
                     }
@@ -266,5 +271,66 @@ public class SootUtils {
             }
         }
         return methods;
+    }
+
+    /**
+     * Returns a set of all Soot methods in the Scene.
+     *
+     * @return a set of all Soot methods in the Scene.
+     */
+    public Set<SootMethod> getAllMethods() {
+        Set<SootMethod> methods = new HashSet<>();
+        for (SootClass sc : Scene.v().getClasses()) {
+            methods.addAll(sc.getMethods());
+        }
+        return methods;
+    }
+
+    /**
+     * Returns a set of all the classes in the scene, including library classes.
+     *
+     * @return a set of all the classes in the scene, including library classes.
+     */
+    public Set<SootClass> getAllClasses() {
+        return new HashSet<>(Scene.v().getClasses());
+    }
+
+    /**
+     * Returns a set of all Soot methods except those for which their class is part of the AndroLibZoo library whitelist.
+     *
+     * @return A set of all non-library Soot methods in the Scene.
+     */
+    public Set<SootMethod> getAllMethodsExceptLibraries() {
+        Set<SootMethod> methods = new HashSet<>();
+        for (SootClass sc : this.getNonLibraryClasses()) {
+            methods.addAll(sc.getMethods());
+        }
+        return methods;
+    }
+
+    /**
+     * Returns a set of all Soot classes except those that are part of the AndroLibZoo library whitelist.
+     *
+     * @return A set of all non-library Soot classes in the Scene.
+     */
+    public Set<SootClass> getAllClassesExceptLibraries() {
+        return this.getNonLibraryClasses();
+    }
+
+    /**
+     * Returns a set of all non-library classes in the Soot Scene.
+     * A non-library class is defined as any class that is not part of a library.
+     *
+     * @return a Set of SootClass objects representing non-library classes in the Soot Scene.
+     */
+    private Set<SootClass> getNonLibraryClasses() {
+        if (this.nonLibraryClasses.isEmpty()) {
+            for (SootClass sc : Scene.v().getClasses()) {
+                if (!LibrariesManager.v().isLibrary(sc)) {
+                    this.nonLibraryClasses.add(sc);
+                }
+            }
+        }
+        return this.nonLibraryClasses;
     }
 }
