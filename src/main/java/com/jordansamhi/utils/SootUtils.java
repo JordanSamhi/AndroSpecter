@@ -374,11 +374,15 @@ public class SootUtils {
             if (edge != null) {
                 SootMethod src = edge.src();
                 SootMethod tgt = edge.tgt();
-                if (!isDummyMainClass(src.getDeclaringClass())) {
-                    methods.add(src);
+                if (src != null) {
+                    if (!isDummyMainClass(src.getDeclaringClass())) {
+                        methods.add(src);
+                    }
                 }
-                if (!isDummyMainClass(tgt.getDeclaringClass())) {
-                    methods.add(tgt);
+                if (tgt != null) {
+                    if (!isDummyMainClass(tgt.getDeclaringClass())) {
+                        methods.add(tgt);
+                    }
                 }
             }
         }
