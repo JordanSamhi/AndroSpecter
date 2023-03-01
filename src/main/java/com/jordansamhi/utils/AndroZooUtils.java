@@ -56,7 +56,7 @@ public class AndroZooUtils {
                 Writer.v().psuccess("APK found in AndroZoo, downloading in progress...");
                 InputStream inputStream = httpConn.getInputStream();
                 String filePath = String.format("%s/%s.apk", this.path, sha256);
-                File f = new File(filePath);
+                File f = new File(this.path);
                 if (!f.canWrite()) {
                     Writer.v().perror(String.format("Cannot write file in %s", this.path));
                     return null;
