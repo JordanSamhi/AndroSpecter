@@ -39,8 +39,8 @@ public class RedisManager {
      * Constructs a new RedisManager object and connects to the specified Redis server using the given connection parameters.
      *
      * @param server the server name or IP address of the Redis server
-     * @param port the port number on which the Redis server is listening
-     * @param auth the authentication password for the Redis server (may be null if authentication is not required)
+     * @param port   the port number on which the Redis server is listening
+     * @param auth   the authentication password for the Redis server (may be null if authentication is not required)
      */
     public RedisManager(String server, String port, String auth) {
         this.jedis = new Jedis(String.format("redis://%s:%s", server, port));
@@ -52,10 +52,20 @@ public class RedisManager {
      * Sends a value to a Redis list using the connection established by this RedisManager.
      *
      * @param list the name of the Redis list to which to send the value
-     * @param val the value to send to the Redis list
+     * @param val  the value to send to the Redis list
      */
-    public void send(String list, String val) {
+    public void lpush(String list, String val) {
         this.jedis.select(0);
         this.jedis.lpush(list, val);
+    }
+
+    /**
+     * Removes and returns a random member from a Redis set using the connection established by this RedisManager.
+     *
+     * @param set the name of the Redis set from which to remove and return a random member
+     * @return the randomly removed member from the Redis set
+     */
+    public String spop(String set) {
+        return this.jedis.spop(set);
     }
 }
