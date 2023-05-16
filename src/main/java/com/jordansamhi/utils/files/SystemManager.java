@@ -61,7 +61,7 @@ public class SystemManager extends FileLoader {
      */
     public boolean isSystemClass(SootClass sc) {
         for (String s : this.items) {
-            if (sc.getName().startsWith(s)) {
+            if (sc.getName().startsWith(String.format("%s.", s))) {
                 return true;
             }
         }
