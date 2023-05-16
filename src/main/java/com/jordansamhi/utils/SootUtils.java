@@ -27,12 +27,10 @@ package com.jordansamhi.utils;
 
 import com.jordansamhi.utils.files.LibrariesManager;
 import com.jordansamhi.utils.utils.Constants;
-import soot.Scene;
-import soot.SootClass;
-import soot.SootMethod;
-import soot.SootMethodRef;
+import soot.*;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
+import soot.options.Options;
 import soot.util.Chain;
 
 import java.util.*;
@@ -415,4 +413,48 @@ public class SootUtils {
     public boolean isDummyMainClass(SootClass sc) {
         return sc.getName().equals(Constants.DUMMYMAINCLASS);
     }
+
+    /**
+     * Sets up Soot
+     *
+     * @param platformPath The path to the Android JARs.
+     * @param apkPath      The path to the APK file to be processed.
+     */
+    public void setupSoot(String platformPath, String apkPath) {
+        G.reset();
+        Options.v().set_process_multiple_dex(true);
+        Options.v().set_allow_phantom_refs(true);
+        Options.v().set_output_format(Options.output_format_none);
+        Options.v().set_whole_program(true);
+        Options.v().set_prepend_classpath(true);
+        Options.v().set_android_jars(platformPath);
+        Options.v().set_src_prec(Options.src_prec_apk);
+        Options.v().set_process_dir(Collections.singletonList(apkPath));
+        Options.v().set_include_all(true);
+        Scene.v().loadNecessaryClasses();
+    }
+
+    /**
+     * Sets up Soot with the specified output directory.
+     *
+     * @param platformPath The path to the Android JARs.
+     * @param apkPath      The path to the APK file to be processed.
+     * @param outputPath   The directory to output the results.
+     */
+    public void setupSootWithOutput(String platformPath, String apkPath, String outputPath) {
+        G.reset();
+        Options.v().set_process_multiple_dex(true);
+        Options.v().set_allow_phantom_refs(true);
+        Options.v().set_output_format(Options.output_format_dex);
+        Options.v().set_output_dir(outputPath);
+        Options.v().set_force_overwrite(true);
+        Options.v().set_whole_program(true);
+        Options.v().set_prepend_classpath(true);
+        Options.v().set_android_jars(platformPath);
+        Options.v().set_src_prec(Options.src_prec_apk);
+        Options.v().set_process_dir(Collections.singletonList(apkPath));
+        Options.v().set_include_all(true);
+        Scene.v().loadNecessaryClasses();
+    }
+
 }
