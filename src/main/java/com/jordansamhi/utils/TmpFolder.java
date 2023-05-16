@@ -33,8 +33,7 @@ public class TmpFolder {
 
     private static TmpFolder instance;
 
-    public TmpFolder() {
-    }
+    private TmpFolder() {}
 
     public static TmpFolder v() {
         if (instance == null) {
