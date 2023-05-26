@@ -40,6 +40,7 @@ public class FlowdroidUtils {
         ifac.getAnalysisFileConfig().setAndroidPlatformDir(platformPath);
         ifac.getAnalysisFileConfig().setTargetAPKFile(this.apkPath);
         ifac.setMergeDexFiles(true);
+        ifac.setCodeEliminationMode(InfoflowConfiguration.CodeEliminationMode.NoCodeElimination);
         SetupApplication sa = new SetupApplication(ifac);
         if (config == null) {
             sa.setSootConfig(new SootConfig());
