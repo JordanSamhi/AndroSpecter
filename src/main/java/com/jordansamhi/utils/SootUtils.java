@@ -41,25 +41,16 @@ import java.util.*;
  */
 public class SootUtils {
 
-    private static SootUtils instance;
     private final Set<SootClass> nonLibraryClasses;
     private final Set<SootClass> classes;
+    private final Set<SootMethod> srcInCG;
+    private final Set<SootMethod> tgtInCG;
 
     public SootUtils() {
         this.nonLibraryClasses = new HashSet<>();
         this.classes = new HashSet<>();
-    }
-
-    /**
-     * Returns the singleton instance of this class.
-     *
-     * @return The singleton instance of this class.
-     */
-    public static SootUtils v() {
-        if (instance == null) {
-            instance = new SootUtils();
-        }
-        return instance;
+        this.srcInCG = new HashSet<>();
+        this.tgtInCG = new HashSet<>();
     }
 
     /**
@@ -250,14 +241,15 @@ public class SootUtils {
      * @return true if the SootMethod is in the CallGraph, false otherwise
      */
     public boolean isInCallGraph(SootMethod method, CallGraph cg) {
-        for (Edge edge : cg) {
-            if (edge != null) {
-                if (edge.src().equals(method) || edge.tgt().equals(method)) {
-                    return true;
+        if (this.srcInCG.isEmpty() || this.tgtInCG.isEmpty()) {
+            for (Edge edge : cg) {
+                if (edge != null) {
+                    this.srcInCG.add(edge.src());
+                    this.tgtInCG.add(edge.tgt());
                 }
             }
         }
-        return false;
+        return this.srcInCG.contains(method) || this.tgtInCG.contains(method);
     }
 
     /**
@@ -388,6 +380,25 @@ public class SootUtils {
     }
 
     /**
+     * Returns a set of all the methods in the given call graph that are not from libraries
+     *
+     * @param cg the call graph to extract methods from
+     * @return a set of all the methods in the given call graph that are not libraries
+     */
+    public Set<SootMethod> getMethodsInCallGraphExceptLibraries(CallGraph cg) {
+        Set<SootMethod> methods = new HashSet<>();
+        Set<SootClass> nonLibraryClasses = this.getAllClassesExceptLibraries();
+        for (SootClass sc : nonLibraryClasses) {
+            for (SootMethod sm : sc.getMethods()) {
+                if (this.isInCallGraph(sm, cg)) {
+                    methods.add(sm);
+                }
+            }
+        }
+        return methods;
+    }
+
+    /**
      * Returns a set of all non-library classes in the Soot Scene.
      * A non-library class is defined as any class that is not part of a library.
      *
@@ -417,15 +428,16 @@ public class SootUtils {
     /**
      * Sets up Soot
      *
-     * @param platformPath The path to the Android JARs.
-     * @param apkPath      The path to the APK file to be processed.
+     * @param platformPath  The path to the Android JARs.
+     * @param apkPath       The path to the APK file to be processed.
+     * @param wholeAnalysis Whether we want a whole program analysis or not
      */
-    public void setupSoot(String platformPath, String apkPath) {
+    public void setupSoot(String platformPath, String apkPath, boolean wholeAnalysis) {
         G.reset();
         Options.v().set_process_multiple_dex(true);
         Options.v().set_allow_phantom_refs(true);
         Options.v().set_output_format(Options.output_format_none);
-        Options.v().set_whole_program(true);
+        Options.v().set_whole_program(wholeAnalysis);
         Options.v().set_prepend_classpath(true);
         Options.v().set_android_jars(platformPath);
         Options.v().set_src_prec(Options.src_prec_apk);
@@ -437,18 +449,19 @@ public class SootUtils {
     /**
      * Sets up Soot with the specified output directory.
      *
-     * @param platformPath The path to the Android JARs.
-     * @param apkPath      The path to the APK file to be processed.
-     * @param outputPath   The directory to output the results.
+     * @param platformPath  The path to the Android JARs.
+     * @param apkPath       The path to the APK file to be processed.
+     * @param outputPath    The directory to output the results.
+     * @param wholeAnalysis Whether we want a whole program analysis or not
      */
-    public void setupSootWithOutput(String platformPath, String apkPath, String outputPath) {
+    public void setupSootWithOutput(String platformPath, String apkPath, String outputPath, boolean wholeAnalysis) {
         G.reset();
         Options.v().set_process_multiple_dex(true);
         Options.v().set_allow_phantom_refs(true);
         Options.v().set_output_format(Options.output_format_dex);
         Options.v().set_output_dir(outputPath);
         Options.v().set_force_overwrite(true);
-        Options.v().set_whole_program(true);
+        Options.v().set_whole_program(wholeAnalysis);
         Options.v().set_prepend_classpath(true);
         Options.v().set_android_jars(platformPath);
         Options.v().set_src_prec(Options.src_prec_apk);
