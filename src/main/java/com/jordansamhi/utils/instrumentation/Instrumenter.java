@@ -1,8 +1,6 @@
 package com.jordansamhi.utils.instrumentation;
 
 import com.jordansamhi.utils.SootUtils;
-import com.jordansamhi.utils.files.LibrariesManager;
-import com.jordansamhi.utils.files.SystemManager;
 import com.jordansamhi.utils.utils.Constants;
 import soot.*;
 import soot.jimple.Jimple;
@@ -41,21 +39,16 @@ public class Instrumenter {
 
     /**
      * Adds a log statement to all methods of application classes. This excludes system classes and libraries.
-     * Returns a Transform object which encapsulates the added transformation for the "wjtp" (Whole-Jimple Transformation Pack) phase.
+     * Returns a Transform object which encapsulates the added transformation for the "jtp" (Jimple Transformation Pack) phase.
      *
-     * @param tagToLog     the tag to be used in the log statement.
+     * @param tagToLog the tag to be used in the log statement.
      * @return a Transform object containing the scene transformation for logging.
      */
     public Transform addLogToAllMethods(String tagToLog) {
-        return new Transform("wjtp.myTransform", new SceneTransformer() {
-            protected void internalTransform(String phaseName, @SuppressWarnings("rawtypes") Map options) {
-                for (SootClass sc : Scene.v().getClasses()) {
-                    if (!LibrariesManager.v().isLibrary(sc) && !SystemManager.v().isSystemClass(sc)) {
-                        for (SootMethod sm : sc.getMethods()) {
-                            addLogToMethod(sm, tagToLog, sm.getSignature());
-                        }
-                    }
-                }
+        return new Transform("jtp.myLogger", new BodyTransformer() {
+            protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
+                SootMethod sm = b.getMethod();
+                addLogToMethod(sm, tagToLog, sm.getSignature());
             }
         });
     }
@@ -73,7 +66,8 @@ public class Instrumenter {
             JimpleBody jb = (JimpleBody) b;
             Chain<Unit> units = b.getUnits();
             Unit entrypoint = jb.getFirstNonIdentityStmt();
-            SootMethodRef logMethodRef = SootUtils.v().getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
+            SootUtils su = new SootUtils();
+            SootMethodRef logMethodRef = su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
             List<Unit> unitsToAdd = new ArrayList<>();
             List<Value> params = new ArrayList<>();
             Value tag = StringConstant.v(tagToLog);
