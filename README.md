@@ -230,4 +230,56 @@ The above code will remove a random member from the Redis set named `mySet`, and
 Please note that `RedisManager` uses [Jedis](https://github.com/redis/jedis), a Java Redis client, for the underlying operations.
 
 
+## Writer Class
 
+The `Writer` class is a utility class that simplifies the process of printing different types of messages to the console. This class provides methods to print error messages, success messages, warning messages, and informational messages, each with a distinct prefix.
+
+The `Writer` class is designed as a singleton to ensure only one instance of the class is created throughout the application.
+
+Here's how you can use the functionalities provided by the `Writer` class:
+
+### 1. Getting an instance of Writer
+
+You can get an instance of `Writer` using the `v()` method. As `Writer` is a singleton, this method will always return the same instance.
+
+```java
+Writer writer = Writer.v();
+```
+
+### 2. Printing an error message
+
+You can print an error message to the console using the `perror(String s)` method. This method prints the provided message with an 'x' as the prefix.
+
+```java
+writer.perror("An error occurred while processing the request.");
+```
+Output: `[x] An error occurred while processing the request.`
+
+### 3. Printing a success message
+
+You can print a success message using the `psuccess(String s)` method. This method prints the provided message with a '✓' as the prefix.
+
+```java
+writer.psuccess("The operation was completed successfully.");
+```
+Output: `[✓] The operation was completed successfully.`
+
+### 4. Printing a warning message
+
+You can print a warning message using the `pwarning(String s)` method. This method prints the provided message with a '!' as the prefix.
+
+```java
+writer.pwarning("This is a warning message.");
+```
+Output: `[!] This is a warning message.`
+
+### 5. Printing an informational message
+
+You can print an informational message using the `pinfo(String s)` method. This method prints the provided message with a '*' as the prefix.
+
+```java
+writer.pinfo("This is an informational message.");
+```
+Output: `[*] This is an informational message.`
+
+Remember that the `Writer` class is thread-safe and can be used in multi-threaded environments without any issues. The `Writer` instance is lazily initialized and will only be created when it's needed for the first time.
