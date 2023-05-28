@@ -102,3 +102,53 @@ In order to use the `FlowdroidUtils` class, you will need the following:
 Please replace `<PATH-TO-APK>`, `<ANDROID-PLATFORM-PATH>`, `<CONFIG-OBJECT>`, `<CALL-GRAPH-ALGORITHM>`, and `<BOOLEAN-VALUE>` with your own details.
 
 **Note:** The FlowDroid analysis might be time-consuming depending on the size and complexity of the APK file. Be patient during the process.
+
+
+
+# Instrumenter
+
+The Instrumenter is a singleton class. Its primary purpose is to facilitate the process of adding log statements to specific parts of your Android application's bytecode during static analysis, with the help of the Soot framework.
+
+## Basic Usage
+
+```java
+// Acquiring the singleton instance
+Instrumenter inst = Instrumenter.v();
+
+// Adding log to all methods
+Transform t1 = inst.addLogToAllMethods("MyTag", "jtp");
+
+// Adding log to all method calls
+Transform t2 = inst.addLogToAllMethodCalls("MyTag", "jtp");
+
+PackManager.v().getPack("jtp").add(t1);
+PackManager.v().getPack("jtp").add(t2);
+```
+
+## Key Features
+
+### 1. Log Statement Insertion
+The Instrumenter provides methods for adding log statements to specific locations in a method's bytecode. You can add log statements to all methods in your application, to all method calls within a method, or to a specific location within a method.
+
+### 2. Flexibility in Logging
+The class allows you to specify the tag and message for your log statements, providing you with the flexibility to customize your logging to suit your needs.
+
+### 3. Singleton Structure
+The class is designed as a singleton, meaning that there is only one instance of the class throughout your application. This helps maintain consistency when instrumenting your code.
+
+## Method Descriptions
+
+### 1. `addLogToAllMethods(String tagToLog, String phaseName)`
+This method inserts a log statement at the entry point of all methods in your application classes. The log statement uses the provided tag and logs the method's signature.
+
+### 2. `addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b)`
+This method allows you to add a log statement to a specific location within a method. It inserts the log statement before the provided `insertionPoint` in the method's `units`.
+
+### 3. `addLogToAllMethodCalls(String tagToLog, String phaseName)`
+This method modifies all method calls within a body to include a log statement before them. It logs the signature of the calling and called method separated with "-->".
+
+### 4. `addLogToMethod(SootMethod sm, String tagToLog, String messageToLog)`
+This method inserts a log statement right after all identity statements in the given method. The log message is passed as a parameter.
+
+## Notes
+Before using the Instrumenter class, ensure you have a good understanding of how the Soot framework works. Also, remember that the "jtp" (Jimple Transformation Pack) phase is the phase where transformations on Jimple representation of methods take place, and this is the phase used for instrumentation in these methods.
