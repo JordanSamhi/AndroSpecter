@@ -97,6 +97,167 @@ Please replace `<YOUR-API-KEY>`, `<PATH-TO-STORE-APKs>`, and `<APK-SHA256-HASH>`
 
 **Note:** This class assumes you have the appropriate permissions to read from and write to the specified path. Please ensure the path is valid and you have the necessary permissions to avoid any issues.
 
+Certainly! Here's an updated readme section with code examples for each method provided by the `SootUtils` class:
+
+# SootUtils
+
+The `SootUtils` class is a utility class that provides various helper methods for working with the Soot framework, including Soot classes, methods, and call graphs.
+
+## Usage
+
+1. Create an instance of `SootUtils`:
+
+   ```java
+   SootUtils sootUtils = new SootUtils();
+   ```
+
+2. Use the methods provided by `SootUtils` to perform various operations on Soot classes, methods, and call graphs. The available methods include:
+
+   - `getMethodRef(String className, String methodName)`: Returns a `SootMethodRef` for the given class name and method name.
+
+   ```java
+   SootMethodRef methodRef = sootUtils.getMethodRef(className, methodName);
+   ```
+
+   - `getAllSuperClasses(SootClass sootClass)`: Returns a set of all superclasses of the given `SootClass`, including the immediate superclass.
+
+   ```java
+   Set<SootClass> superClasses = sootUtils.getAllSuperClasses(sootClass);
+   ```
+
+   - `getAllInterfaces(SootClass sootClass)`: Returns a set of all interfaces implemented by the given `SootClass`.
+
+   ```java
+   Set<SootClass> interfaces = sootUtils.getAllInterfaces(sootClass);
+   ```
+
+   - `getClassNames(Collection<SootClass> classes)`: Returns a set of the class names of the given list of `SootClasses`.
+
+   ```java
+   Set<String> classNames = sootUtils.getClassNames(classes);
+   ```
+
+   - `getNumberOfStmt(SootMethod sm)`: Returns the number of statements in the given `SootMethod`.
+
+   ```java
+   int stmtCount = sootUtils.getNumberOfStmt(sootMethod);
+   ```
+
+   - `getNumberOfStmtInApp()`: Returns the total number of statements in all application classes and methods.
+
+   ```java
+   int totalStmtCount = sootUtils.getNumberOfStmtInApp();
+   ```
+
+   - `getNumberOfStmtInAppWithoutLibraries()`: Returns the total number of statements in all application classes and methods except libraries.
+
+   ```java
+   int stmtCountWithoutLibraries = sootUtils.getNumberOfStmtInAppWithoutLibraries();
+   ```
+
+   - `getNumberOfStmt(Collection<SootMethod> methods)`: Returns the total number of statements in a collection of `SootMethod` objects.
+
+   ```java
+   int totalStmtCount = sootUtils.getNumberOfStmt(methods);
+   ```
+
+   - `getCountOfEdges(CallGraph cg)`: Returns the number of edges in the given `CallGraph`.
+
+   ```java
+   int edgeCount = sootUtils.getCountOfEdges(callGraph);
+   ```
+
+   - `getCountOfNodes(CallGraph cg)`: Returns the number of nodes in the given `CallGraph`.
+
+   ```java
+   int nodeCount = sootUtils.getCountOfNodes(callGraph);
+   ```
+
+   - `getComponentType(SootClass sc)`: Returns the type of Android component for the given `SootClass`.
+
+   ```java
+   String componentType = sootUtils.getComponentType(sootClass);
+   ```
+
+   - `isInCallGraph(SootMethod method, CallGraph cg)`: Checks whether the given `SootMethod` is in the given `CallGraph`.
+
+   ```java
+   boolean isInCallGraph = sootUtils.isInCallGraph(sootMethod, callGraph);
+   ```
+
+   - `isCalledInCallGraph(SootMethod method, CallGraph cg)`: Checks whether the given `SootMethod` is called in the given `CallGraph`.
+
+   ```java
+   boolean isCalled = sootUtils.isCalledInCallGraph(sootMethod, callGraph);
+   ```
+
+   - `getMethodsFromPackage(String packageName)`: Returns a set of all application methods that belong to the given package.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsFromPackage(packageName);
+   ```
+
+   - `getAllMethods()`: Returns a set of all `SootMethod` objects in the Scene.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getAllMethods();
+   ```
+
+   - `getClasses()`: Returns a set of `SootClass` objects representing all classes in the Soot Scene except the Dummy Main Class.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getClasses();
+   ```
+
+   - `getAllClasses()`: Returns a set of all the classes in the scene, including library classes.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getAllClasses();
+   ```
+
+   - `getAllMethodsExceptLibraries()`: Returns a set of all non-library `SootMethod` objects in the Scene.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getAllMethodsExceptLibraries();
+   ```
+
+   - `getAllClassesExceptLibraries()`: Returns a set of all non-library `SootClass` objects in the Scene.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getAllClassesExceptLibraries();
+   ```
+
+   - `getMethodsInCallGraph(CallGraph cg)`: Returns a set of all the methods in the given `CallGraph`.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsInCallGraph(callGraph);
+   ```
+
+   - `getMethodsInCallGraphExceptLibraries(CallGraph cg)`: Returns a set of all the methods in the given `CallGraph` that are not from libraries.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsInCallGraphExceptLibraries(callGraph);
+   ```
+
+   - `getNonLibraryClasses()`: Returns a set of all non-library `SootClass` objects in the Soot Scene.
+
+   ```java
+   Set<SootClass> nonLibraryClasses = sootUtils.getNonLibraryClasses();
+   ```
+
+## Example
+
+Here's an example that demonstrates how to use the `SootUtils` class to retrieve all non-library classes in a Soot Scene:
+
+```java
+SootUtils sootUtils = new SootUtils();
+Set<SootClass> nonLibraryClasses = sootUtils.getNonLibraryClasses();
+for (SootClass sc : nonLibraryClasses) {
+    System.out.println(sc.getName());
+}
+```
+
+This will print the names of all non-library classes in the Soot Scene.
 
 # FlowdroidUtils
 
