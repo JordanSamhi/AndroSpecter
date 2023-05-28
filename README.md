@@ -283,3 +283,33 @@ writer.pinfo("This is an informational message.");
 Output: `[*] This is an informational message.`
 
 Remember that the `Writer` class is thread-safe and can be used in multi-threaded environments without any issues. The `Writer` instance is lazily initialized and will only be created when it's needed for the first time.
+
+## TmpFolder Class
+
+The `TmpFolder` class is a utility class that provides an easy way to access the default temporary directory of the current system. This class follows the Singleton Design Pattern, meaning only one instance of this class can exist in the application.
+
+Here's how you can use the functionalities provided by the `TmpFolder` class:
+
+### 1. Getting an instance of TmpFolder
+
+You can get an instance of `TmpFolder` using the `v()` method. As `TmpFolder` is a singleton, this method will always return the same instance.
+
+```java
+TmpFolder tmpFolder = TmpFolder.v();
+```
+
+### 2. Getting the default temporary directory
+
+You can get the path to the default temporary directory of the current system using the `get()` method. This method returns the value of the system property "java.io.tmpdir".
+
+```java
+String tempDirPath = tmpFolder.get();
+```
+
+This will return a string representing the absolute path of the default temporary directory. The exact location of this directory can vary between systems and users. 
+
+For example, on a Unix-like operating system, this might return a path like "/tmp", and on a Windows system, it might return something like "C:\\Users\\Username\\AppData\\Local\\Temp".
+
+Remember that the `TmpFolder` class is thread-safe and can be used in multi-threaded environments without any issues. The `TmpFolder` instance is lazily initialized and will only be created when it's needed for the first time.
+
+This utility is very useful when you want to create temporary files or directories in your application, without worrying about the specifics of the underlying system.
