@@ -1,8 +1,17 @@
 # Utils
 
+## Table of Contents
 
+1. [AndroZooUtils](#androzooutils)
+2. [FlowdroidUtils](#flowdroidutils)
+3. [Instrumenter](#instrumenter)
+4. [FilesManager](#filesmanager)
+5. [RedisManager](#redismanager)
+6. [Writer](#writer)
+7. [TmpFolder](#tmpfolder)
+8. [MethodSignatureConverter](#methodsignatureconverter)
 
-# AndroZooUtils Class
+# AndroZooUtils
 
 ## Overview
 
@@ -49,7 +58,7 @@ Please replace `<YOUR-API-KEY>`, `<PATH-TO-STORE-APKs>`, and `<APK-SHA256-HASH>`
 **Note:** This class assumes you have the appropriate permissions to read from and write to the specified path. Please ensure the path is valid and you have the necessary permissions to avoid any issues.
 
 
-# FlowdroidUtils Class
+# FlowdroidUtils
 
 ## Overview
 
@@ -154,7 +163,7 @@ This method inserts a log statement right after all identity statements in the g
 Before using the Instrumenter class, ensure you have a good understanding of how the Soot framework works. Also, remember that the "jtp" (Jimple Transformation Pack) phase is the phase where transformations on Jimple representation of methods take place, and this is the phase used for instrumentation in these methods.
 
 
-# LibrariesManager and SystemManager Classes
+# FilesManager
 
 ## Overview
 
@@ -194,13 +203,13 @@ SystemManager systemManager = SystemManager.v();
 // Check whether a SootClass is a system class
 SootClass sc = ... // The SootClass to check
 boolean isSystemClass = systemManager.isSystemClass(sc);
+```
 
-
-## RedisManager Class
+# RedisManager
 
 The `RedisManager` is a utility class that helps you interact with a Redis server.
 
-### 1. Establishing a Connection with Redis Server
+## 1. Establishing a Connection with Redis Server
 
 To create an instance of `RedisManager`, you need to provide the server name (or IP address), port number, and the authentication password (if required) of your Redis server.
 
@@ -209,7 +218,7 @@ RedisManager redisManager = new RedisManager("localhost", "6379", "password");
 ```
 In the above code, we're creating a `RedisManager` instance that connects to a Redis server running on `localhost` on port `6379` with the password as `password`.
 
-### 2. Pushing Values to a Redis List
+## 2. Pushing Values to a Redis List
 
 The `lpush(String list, String val)` method is used to push a value to a Redis list. You need to provide the name of the list and the value to be pushed.
 
@@ -218,7 +227,7 @@ redisManager.lpush("myList", "Hello, World!");
 ```
 The above code will push the string "Hello, World!" into the Redis list named `myList`.
 
-### 3. Removing a Random Member from a Redis Set
+## 3. Removing a Random Member from a Redis Set
 
 The `spop(String set)` method removes and returns a random member from a Redis set. You need to provide the name of the set.
 
@@ -230,7 +239,7 @@ The above code will remove a random member from the Redis set named `mySet`, and
 Please note that `RedisManager` uses [Jedis](https://github.com/redis/jedis), a Java Redis client, for the underlying operations.
 
 
-## Writer Class
+# Writer
 
 The `Writer` class is a utility class that simplifies the process of printing different types of messages to the console. This class provides methods to print error messages, success messages, warning messages, and informational messages, each with a distinct prefix.
 
@@ -238,7 +247,7 @@ The `Writer` class is designed as a singleton to ensure only one instance of the
 
 Here's how you can use the functionalities provided by the `Writer` class:
 
-### 1. Getting an instance of Writer
+## 1. Getting an instance of Writer
 
 You can get an instance of `Writer` using the `v()` method. As `Writer` is a singleton, this method will always return the same instance.
 
@@ -246,7 +255,7 @@ You can get an instance of `Writer` using the `v()` method. As `Writer` is a sin
 Writer writer = Writer.v();
 ```
 
-### 2. Printing an error message
+## 2. Printing an error message
 
 You can print an error message to the console using the `perror(String s)` method. This method prints the provided message with an 'x' as the prefix.
 
@@ -255,7 +264,7 @@ writer.perror("An error occurred while processing the request.");
 ```
 Output: `[x] An error occurred while processing the request.`
 
-### 3. Printing a success message
+## 3. Printing a success message
 
 You can print a success message using the `psuccess(String s)` method. This method prints the provided message with a '✓' as the prefix.
 
@@ -264,7 +273,7 @@ writer.psuccess("The operation was completed successfully.");
 ```
 Output: `[✓] The operation was completed successfully.`
 
-### 4. Printing a warning message
+## 4. Printing a warning message
 
 You can print a warning message using the `pwarning(String s)` method. This method prints the provided message with a '!' as the prefix.
 
@@ -273,7 +282,7 @@ writer.pwarning("This is a warning message.");
 ```
 Output: `[!] This is a warning message.`
 
-### 5. Printing an informational message
+## 5. Printing an informational message
 
 You can print an informational message using the `pinfo(String s)` method. This method prints the provided message with a '*' as the prefix.
 
@@ -284,13 +293,13 @@ Output: `[*] This is an informational message.`
 
 Remember that the `Writer` class is thread-safe and can be used in multi-threaded environments without any issues. The `Writer` instance is lazily initialized and will only be created when it's needed for the first time.
 
-## TmpFolder Class
+# TmpFolder
 
 The `TmpFolder` class is a utility class that provides an easy way to access the default temporary directory of the current system. This class follows the Singleton Design Pattern, meaning only one instance of this class can exist in the application.
 
 Here's how you can use the functionalities provided by the `TmpFolder` class:
 
-### 1. Getting an instance of TmpFolder
+## 1. Getting an instance of TmpFolder
 
 You can get an instance of `TmpFolder` using the `v()` method. As `TmpFolder` is a singleton, this method will always return the same instance.
 
@@ -298,7 +307,7 @@ You can get an instance of `TmpFolder` using the `v()` method. As `TmpFolder` is
 TmpFolder tmpFolder = TmpFolder.v();
 ```
 
-### 2. Getting the default temporary directory
+## 2. Getting the default temporary directory
 
 You can get the path to the default temporary directory of the current system using the `get()` method. This method returns the value of the system property "java.io.tmpdir".
 
@@ -315,13 +324,13 @@ Remember that the `TmpFolder` class is thread-safe and can be used in multi-thre
 This utility is very useful when you want to create temporary files or directories in your application, without worrying about the specifics of the underlying system.
 
 
-## MethodSignatureConverter Class
+# MethodSignatureConverter
 
 The `MethodSignatureConverter` class is a utility class that provides methods for converting Java method signatures to Soot method signatures, and for extracting various components of method signatures such as class name, method name, return type, and parameter names.
 
 This class follows the Singleton Design Pattern, ensuring only a single instance of it exists throughout the application.
 
-### 1. Getting an instance of MethodSignatureConverter
+## 1. Getting an instance of MethodSignatureConverter
 
 You can get an instance of `MethodSignatureConverter` using the `v()` method.
 
@@ -329,7 +338,7 @@ You can get an instance of `MethodSignatureConverter` using the `v()` method.
 MethodSignatureConverter converter = MethodSignatureConverter.v();
 ```
 
-### 2. Extracting Class Name from Soot Method Signature
+## 2. Extracting Class Name from Soot Method Signature
 
 If you have a Soot method signature and you need to extract the class name, you can use the `getClassNameFromSignature()` method.
 
@@ -338,7 +347,7 @@ String className = converter.getClassNameFromSignature("<com.example.MyClass: vo
 // Returns "com.example.MyClass"
 ```
 
-### 3. Extracting Method Name from Soot Method Signature
+## 3. Extracting Method Name from Soot Method Signature
 
 To extract the method name from a Soot method signature, you can use the `getMethodNameFromSignature()` method.
 
@@ -347,7 +356,7 @@ String methodName = converter.getMethodNameFromSignature("<com.example.MyClass: 
 // Returns "myMethod"
 ```
 
-### 4. Extracting Return Type from Soot Method Signature
+## 4. Extracting Return Type from Soot Method Signature
 
 If you need to find out the return type of a method from its Soot signature, you can use the `getReturnNameFromSignature()` method.
 
@@ -356,7 +365,7 @@ String returnType = converter.getReturnNameFromSignature("<com.example.MyClass: 
 // Returns "void"
 ```
 
-### 5. Extracting Parameter Names from Soot Method Signature
+## 5. Extracting Parameter Names from Soot Method Signature
 
 If you need to extract parameter types from a Soot method signature, use the `getParametersNamesFromSignature()` method. 
 
@@ -365,7 +374,7 @@ List<String> params = converter.getParametersNamesFromSignature("<com.example.My
 // Returns a list with "p1" and "p2"
 ```
 
-### 6. Converting Java Signature to Soot Signature
+## 6. Converting Java Signature to Soot Signature
 
 If you have a Java signature and need to convert it to a Soot signature, use the `javaSigToSootSig()` method.
 
