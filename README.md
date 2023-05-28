@@ -48,3 +48,57 @@ Please replace `<YOUR-API-KEY>`, `<PATH-TO-STORE-APKs>`, and `<APK-SHA256-HASH>`
 
 **Note:** This class assumes you have the appropriate permissions to read from and write to the specified path. Please ensure the path is valid and you have the necessary permissions to avoid any issues.
 
+
+# FlowdroidUtils Class
+
+## Overview
+
+The `FlowdroidUtils` class is a utility for initializing and executing FlowDroid analyses on Android apps. 
+
+## Usage
+
+### Initialization
+
+You can initialize the `FlowdroidUtils` class by providing the path to an Android APK file:
+
+```java
+String apkPath = "<PATH-TO-APK>";
+FlowdroidUtils flowdroidUtils = new FlowdroidUtils(apkPath);
+```
+
+### Running a FlowDroid Analysis
+
+Once you've instantiated the `FlowdroidUtils` object, you can initiate a FlowDroid analysis using the `initializeFlowdroid` method:
+
+```java
+String platformPath = "<ANDROID-PLATFORM-PATH>";
+IInfoflowConfig config = <CONFIG-OBJECT>;  // or null to use default configuration
+String callGraphAlgo = "<CALL-GRAPH-ALGORITHM>";  // CHA, RTA, VTA, or SPARK
+boolean useExistingInstance = <BOOLEAN-VALUE>;  
+
+SetupApplication sa = flowdroidUtils.initializeFlowdroid(platformPath, config, callGraphAlgo, useExistingInstance);
+```
+
+This method will setup the FlowDroid analysis and return a `SetupApplication` object. If you choose to use an existing Soot instance, be sure to set `useExistingInstance` to true.
+
+### Retrieving Package Name
+
+You can retrieve the package name of the APK using the `getPackageName` method:
+
+```java
+String packageName = flowdroidUtils.getPackageName();
+```
+
+## Prerequisites
+
+In order to use the `FlowdroidUtils` class, you will need the following:
+
+1. The path to the Android APK that you want to analyze.
+2. The path to the directory containing the Android platform.
+3. The configuration to be used for the analysis, or null to use default configuration.
+4. The algorithm to be used for constructing the call graph (CHA, RTA, VTA, or SPARK).
+5. A boolean value indicating whether to use an existing Soot instance.
+
+Please replace `<PATH-TO-APK>`, `<ANDROID-PLATFORM-PATH>`, `<CONFIG-OBJECT>`, `<CALL-GRAPH-ALGORITHM>`, and `<BOOLEAN-VALUE>` with your own details.
+
+**Note:** The FlowDroid analysis might be time-consuming depending on the size and complexity of the APK file. Be patient during the process.
