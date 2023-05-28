@@ -30,13 +30,14 @@ Do not hesitate to contribute may you have more idea to simplify the process of 
 ## Table of Contents
 
 1. [AndroZooUtils](#androzooutils)
-2. [FlowdroidUtils](#flowdroidutils)
-3. [Instrumenter](#instrumenter)
-4. [FilesManager](#filesmanager)
-5. [RedisManager](#redismanager)
-6. [Writer](#writer)
-7. [TmpFolder](#tmpfolder)
-8. [MethodSignatureConverter](#methodsignatureconverter)
+2. [SootUtils](#sootutils)
+3. [FlowdroidUtils](#flowdroidutils)
+4. [Instrumenter](#instrumenter)
+5. [FilesManager](#filesmanager)
+6. [RedisManager](#redismanager)
+7. [Writer](#writer)
+8. [TmpFolder](#tmpfolder)
+9. [MethodSignatureConverter](#methodsignatureconverter)
 
 # Usage with Maven
 
