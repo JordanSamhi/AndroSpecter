@@ -61,7 +61,7 @@ public class Instrumenter {
     }
 
     /**
-     * Adds a log statement to all methods of application classes. This excludes system classes and libraries.
+     * Adds a log statement to all methods of application classes.
      * Returns a Transform object which encapsulates the added transformation for the "jtp" (Jimple Transformation Pack) phase.
      *
      * @param tagToLog the tag to be used in the log statement.
