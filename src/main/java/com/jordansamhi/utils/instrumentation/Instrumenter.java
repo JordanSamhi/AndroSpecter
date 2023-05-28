@@ -7,6 +7,7 @@ import soot.jimple.*;
 import soot.util.Chain;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -86,14 +87,18 @@ public class Instrumenter {
         return new Transform(phaseName, new BodyTransformer() {
             protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
                 Chain<Unit> units = b.getUnits();
+                Map<Unit, String> insertionPointsToMessage = new HashMap<>();
                 for (Unit u : units) {
                     Stmt stmt = (Stmt) u;
                     InvokeExpr ie;
                     if (stmt.containsInvokeExpr()) {
                         ie = stmt.getInvokeExpr();
                         String messageToLog = String.format("%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
-                        addLogStatement(units, u, tagToLog, messageToLog, b);
+                        insertionPointsToMessage.put(u, messageToLog);
                     }
+                }
+                for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
+                    addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b);
                 }
             }
         });
