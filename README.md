@@ -1,5 +1,32 @@
 # AndroSpecter Library
 
+Welcome to the `AndroSpecter` library, a collection of helper classes designed to streamline the static analysis of Java programs and Android apps. 
+This library is your one-stop solution for several common and not-so-common tasks in Java, enabling you to focus more on your core application logic rather than getting bogged down with intricate details.
+
+This library comprises several utility classes each serving unique purposes:
+
+- `AndroZooUtils`: Provides utilities for streamlined downloading of APK files from AndroZoo using a provided API key and path.
+
+- `FlowdroidUtils`: Dacilitates the initialization and execution of FlowDroid analyses on Android apps, providing convenient methods for setting up and running the analysis.
+
+- `Instrumenter`: Helps to add log statements to specific parts of your Android application's bytecode.
+
+- `LibrariesManager` and `SystemManager`: Provide utilities for managing libraries and system classes in Android apps.
+
+- `TmpFolder`: Provides easy access to the default temporary directory of the system.
+
+- `RedisManager`: Simplifies the interaction with a Redis server, providing easy-to-use functions for common operations.
+
+- `Writer`: Enhances console messaging with a suite of functions that allow for quick and easy printing of error, success, warning, and informational messages.
+
+- `MethodSignatureConverter`: This class is a handy tool when dealing with Java and Soot method signatures, providing methods for conversion and extraction of various components of these signatures.
+
+Each class is explained in detail further in this document, along with examples on how to use them.
+
+Whether you are a beginner just starting out with static analysis, or already a master looking for a way to increase your productivity, `AndroSpecter` is here to simplify your work.
+
+Do not hesitate to contribute may you have more idea to simplify the process of static analysis for Java and Android apps.
+
 ## Table of Contents
 
 1. [AndroZooUtils](#androzooutils)
