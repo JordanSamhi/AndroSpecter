@@ -194,3 +194,40 @@ SystemManager systemManager = SystemManager.v();
 // Check whether a SootClass is a system class
 SootClass sc = ... // The SootClass to check
 boolean isSystemClass = systemManager.isSystemClass(sc);
+
+
+## RedisManager Class
+
+The `RedisManager` is a utility class that helps you interact with a Redis server.
+
+### 1. Establishing a Connection with Redis Server
+
+To create an instance of `RedisManager`, you need to provide the server name (or IP address), port number, and the authentication password (if required) of your Redis server.
+
+```java
+RedisManager redisManager = new RedisManager("localhost", "6379", "password");
+```
+In the above code, we're creating a `RedisManager` instance that connects to a Redis server running on `localhost` on port `6379` with the password as `password`.
+
+### 2. Pushing Values to a Redis List
+
+The `lpush(String list, String val)` method is used to push a value to a Redis list. You need to provide the name of the list and the value to be pushed.
+
+```java
+redisManager.lpush("myList", "Hello, World!");
+```
+The above code will push the string "Hello, World!" into the Redis list named `myList`.
+
+### 3. Removing a Random Member from a Redis Set
+
+The `spop(String set)` method removes and returns a random member from a Redis set. You need to provide the name of the set.
+
+```java
+String value = redisManager.spop("mySet");
+```
+The above code will remove a random member from the Redis set named `mySet`, and store the removed member into the variable `value`.
+
+Please note that `RedisManager` uses [Jedis](https://github.com/redis/jedis), a Java Redis client, for the underlying operations.
+
+
+
