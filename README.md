@@ -38,6 +38,19 @@ Do not hesitate to contribute may you have more idea to simplify the process of 
 7. [TmpFolder](#tmpfolder)
 8. [MethodSignatureConverter](#methodsignatureconverter)
 
+# Usage with Maven
+
+To use `AndroSpecter` in your Maven project, you can simply add the following dependency to your project's `pom.xml` file:
+
+```xml
+<dependency>
+    <groupId>com.jordansamhi</groupId>
+    <artifactId>AndroSpecter</artifactId>
+    <version>0.1</version>
+</dependency>
+```
+
+
 # AndroZooUtils
 
 ## Overview
@@ -418,3 +431,16 @@ To extract the sub-signature from a signature (method return type, name, and par
 String subSig = converter.sigToSubSig("<com.example.MyClass: void myMethod(java.lang.String,int)>");
 // Returns "void myMethod(java.lang.String,int)"
 ```
+
+## Built With
+
+* [Maven](https://maven.apache.org/) - Dependency Management
+
+## License
+
+This project is licensed under the GNU LESSER GENERAL PUBLIC LICENSE 2.1 - see the [LICENSE](LICENSE) file for details
+
+## Contact
+
+For any question regarding this study, please contact us at:
+[Jordan Samhi](mailto:jordan.samhi@uni.lu)
