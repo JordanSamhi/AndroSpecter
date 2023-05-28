@@ -313,3 +313,72 @@ For example, on a Unix-like operating system, this might return a path like "/tm
 Remember that the `TmpFolder` class is thread-safe and can be used in multi-threaded environments without any issues. The `TmpFolder` instance is lazily initialized and will only be created when it's needed for the first time.
 
 This utility is very useful when you want to create temporary files or directories in your application, without worrying about the specifics of the underlying system.
+
+
+## MethodSignatureConverter Class
+
+The `MethodSignatureConverter` class is a utility class that provides methods for converting Java method signatures to Soot method signatures, and for extracting various components of method signatures such as class name, method name, return type, and parameter names.
+
+This class follows the Singleton Design Pattern, ensuring only a single instance of it exists throughout the application.
+
+### 1. Getting an instance of MethodSignatureConverter
+
+You can get an instance of `MethodSignatureConverter` using the `v()` method.
+
+```java
+MethodSignatureConverter converter = MethodSignatureConverter.v();
+```
+
+### 2. Extracting Class Name from Soot Method Signature
+
+If you have a Soot method signature and you need to extract the class name, you can use the `getClassNameFromSignature()` method.
+
+```java
+String className = converter.getClassNameFromSignature("<com.example.MyClass: void myMethod()>");
+// Returns "com.example.MyClass"
+```
+
+### 3. Extracting Method Name from Soot Method Signature
+
+To extract the method name from a Soot method signature, you can use the `getMethodNameFromSignature()` method.
+
+```java
+String methodName = converter.getMethodNameFromSignature("<com.example.MyClass: void myMethod()>");
+// Returns "myMethod"
+```
+
+### 4. Extracting Return Type from Soot Method Signature
+
+If you need to find out the return type of a method from its Soot signature, you can use the `getReturnNameFromSignature()` method.
+
+```java
+String returnType = converter.getReturnNameFromSignature("<com.example.MyClass: void myMethod()>");
+// Returns "void"
+```
+
+### 5. Extracting Parameter Names from Soot Method Signature
+
+If you need to extract parameter types from a Soot method signature, use the `getParametersNamesFromSignature()` method. 
+
+```java
+List<String> params = converter.getParametersNamesFromSignature("<com.example.MyClass: void myMethod(p1,p2)>");
+// Returns a list with "p1" and "p2"
+```
+
+### 6. Converting Java Signature to Soot Signature
+
+If you have a Java signature and need to convert it to a Soot signature, use the `javaSigToSootSig()` method.
+
+```java
+String sootSig = converter.javaSigToSootSig("Lcom/example/MyClass;");
+// Returns "com.example.MyClass"
+```
+
+### 7. Extracting Sub-signature from Signature
+
+To extract the sub-signature from a signature (method return type, name, and parameter types), use the `sigToSubSig()` method.
+
+```java
+String subSig = converter.sigToSubSig("<com.example.MyClass: void myMethod(java.lang.String,int)>");
+// Returns "void myMethod(java.lang.String,int)"
+```
