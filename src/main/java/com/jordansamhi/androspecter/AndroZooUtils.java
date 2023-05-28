@@ -1,6 +1,6 @@
-package com.jordansamhi.utils;
+package com.jordansamhi.androspecter;
 
-import com.jordansamhi.utils.printers.Writer;
+import com.jordansamhi.androspecter.printers.Writer;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -11,7 +11,7 @@ import java.net.URLEncoder;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

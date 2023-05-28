@@ -41,7 +41,7 @@
 			<param name="levelMax" value="error" />
         </filter>
     </appender>
-    <logger name="utils" additivity="false">
+    <logger name="androspecter" additivity="false">
         <level value="INFO"/>
         <appender-ref ref="STDOUT_DEBUG"/>
         <appender-ref ref="STDOUT_INFO"/>

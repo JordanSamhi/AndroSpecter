@@ -1,8 +1,8 @@
-package com.jordansamhi.utils;
+package com.jordansamhi.androspecter;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi
@@ -25,7 +25,7 @@ package com.jordansamhi.utils;
  * #L%
  */
 
-import com.jordansamhi.utils.printers.Writer;
+import com.jordansamhi.androspecter.printers.Writer;
 import java.util.Calendar;
 import java.util.Timer;
 import java.util.TimerTask;

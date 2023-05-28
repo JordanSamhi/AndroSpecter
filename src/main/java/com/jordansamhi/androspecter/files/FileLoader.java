@@ -1,4 +1,4 @@
-package com.jordansamhi.utils.files;
+package com.jordansamhi.androspecter.files;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -9,7 +9,7 @@ import java.util.Set;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

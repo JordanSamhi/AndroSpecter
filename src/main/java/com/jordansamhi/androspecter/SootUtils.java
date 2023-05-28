@@ -1,8 +1,8 @@
-package com.jordansamhi.utils;
+package com.jordansamhi.androspecter;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi
@@ -25,8 +25,8 @@ package com.jordansamhi.utils;
  * #L%
  */
 
-import com.jordansamhi.utils.files.LibrariesManager;
-import com.jordansamhi.utils.utils.Constants;
+import com.jordansamhi.androspecter.files.LibrariesManager;
+import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;

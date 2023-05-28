@@ -1,7 +1,7 @@
-package com.jordansamhi.utils.instrumentation;
+package com.jordansamhi.androspecter.instrumentation;
 
-import com.jordansamhi.utils.SootUtils;
-import com.jordansamhi.utils.utils.Constants;
+import com.jordansamhi.androspecter.SootUtils;
+import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
 import soot.util.Chain;
@@ -12,7 +12,7 @@ import java.util.Map;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

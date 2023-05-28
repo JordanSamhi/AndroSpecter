@@ -1,10 +1,10 @@
-package com.jordansamhi.utils.network;
+package com.jordansamhi.androspecter.network;
 
 import redis.clients.jedis.Jedis;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

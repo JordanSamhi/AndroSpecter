@@ -1,6 +1,6 @@
-package com.jordansamhi.utils;
+package com.jordansamhi.androspecter;
 
-import com.jordansamhi.utils.config.SootConfig;
+import com.jordansamhi.androspecter.config.SootConfig;
 import soot.G;
 import soot.jimple.infoflow.InfoflowConfiguration;
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
@@ -10,7 +10,7 @@ import soot.jimple.infoflow.config.IInfoflowConfig;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

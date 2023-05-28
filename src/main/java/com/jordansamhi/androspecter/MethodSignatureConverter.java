@@ -1,8 +1,8 @@
-package com.jordansamhi.utils;
+package com.jordansamhi.androspecter;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

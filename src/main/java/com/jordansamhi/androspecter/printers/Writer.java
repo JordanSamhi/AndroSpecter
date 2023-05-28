@@ -1,8 +1,8 @@
-package com.jordansamhi.utils.printers;
+package com.jordansamhi.androspecter.printers;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi

@@ -1,11 +1,11 @@
-package com.jordansamhi.utils.files;
+package com.jordansamhi.androspecter.files;
 
-import com.jordansamhi.utils.utils.Constants;
+import com.jordansamhi.androspecter.utils.Constants;
 import soot.SootClass;
 
 /*-
  * #%L
- * Utils
+ * AndroSpecter
  *
  * %%
  * Copyright (C) 2023 Jordan Samhi
@@ -29,37 +29,37 @@ import soot.SootClass;
  */
 
 /**
- * The LibrariesManager class is responsible for loading and managing the list of known library packages.
- * It extends the {@link FileLoader} abstract class to load the list of library packages from a file at startup.
- * The singleton pattern is used to ensure only one instance of this class is created.
+ * Manages system classes by checking for system class membership of given Soot classes.
+ * Loads the list of system classes from a configuration file at startup.
  */
-public class LibrariesManager extends FileLoader {
+public class SystemManager extends FileLoader {
 
-    private static LibrariesManager instance;
+    private static SystemManager instance;
 
-    private LibrariesManager() {
+    private SystemManager() {
         super();
     }
 
-    public static LibrariesManager v() {
+    public static SystemManager v() {
         if (instance == null) {
-            instance = new LibrariesManager();
+            instance = new SystemManager();
         }
         return instance;
     }
 
     @Override
     protected String getFile() {
-        return Constants.LIBRARIES_FILE;
+        return Constants.SYSTEMS_FILE;
     }
 
+
     /**
-     * Checks whether the given SootClass belongs to a library.
+     * Checks whether the given SootClass is a system class.
      *
-     * @param sc the SootClass to check for library membership
-     * @return true if the SootClass belongs to a library, false otherwise
+     * @param sc the SootClass to check for system class membership
+     * @return true if the SootClass is a system class, false otherwise
      */
-    public boolean isLibrary(SootClass sc) {
+    public boolean isSystemClass(SootClass sc) {
         for (String s : this.items) {
             if (sc.getName().startsWith(String.format("%s.", s))) {
                 return true;
