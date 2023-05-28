@@ -152,3 +152,45 @@ This method inserts a log statement right after all identity statements in the g
 
 ## Notes
 Before using the Instrumenter class, ensure you have a good understanding of how the Soot framework works. Also, remember that the "jtp" (Jimple Transformation Pack) phase is the phase where transformations on Jimple representation of methods take place, and this is the phase used for instrumentation in these methods.
+
+
+# LibrariesManager and SystemManager Classes
+
+## Overview
+
+The `LibrariesManager` and `SystemManager` classes provide utilities for managing libraries and system classes in Android apps.
+
+A point to note is that these classes rely on two specific files located in the resource folder of your application. These files contain the reference data used to determine whether a class is a system class or a library.
+
+## LibrariesManager Class
+
+`LibrariesManager` is used to load and manage a list of known library packages. It uses the singleton pattern to ensure that only one instance of this class exists throughout your application. 
+
+The class loads data from a file defined by `Constants.LIBRARIES_FILE`. This file should contain the names of known library packages, one per line. 
+
+Here is how you can use the `LibrariesManager` class:
+
+```java
+// Retrieve the singleton instance of LibrariesManager
+LibrariesManager librariesManager = LibrariesManager.v();
+
+// Check whether a SootClass belongs to a library
+SootClass sc = ... // The SootClass to check
+boolean isLibraryClass = librariesManager.isLibrary(sc);
+```
+
+## SystemManager Class
+
+`SystemManager` manages system classes by checking if a given `SootClass` is a system class. Like `LibrariesManager`, it uses the singleton pattern.
+
+The class loads data from a file defined by `Constants.SYSTEMS_FILE`. This file should contain the names of system classes, one per line.
+
+Here's how you can use the `SystemManager` class:
+
+```java
+// Retrieve the singleton instance of SystemManager
+SystemManager systemManager = SystemManager.v();
+
+// Check whether a SootClass is a system class
+SootClass sc = ... // The SootClass to check
+boolean isSystemClass = systemManager.isSystemClass(sc);
