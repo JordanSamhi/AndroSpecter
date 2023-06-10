@@ -21,6 +21,8 @@ This library comprises several utility classes each serving unique purposes:
 
 - `MethodSignatureConverter`: This class is a handy tool when dealing with Java and Soot method signatures, providing methods for conversion and extraction of various components of these signatures.
 
+- `ResultsAccumulator`: This class is a singleton that provides a centralized system to record, retrieve, and output various metrics throughout a given application.
+
 Each class is explained in detail further in this document, along with examples on how to use them.
 
 Whether you are a beginner just starting out with static analysis, or already a master looking for a way to increase your productivity, `AndroSpecter` is here to simplify your work.
@@ -38,6 +40,7 @@ Do not hesitate to contribute may you have more idea to simplify the process of 
 7. [Writer](#writer)
 8. [TmpFolder](#tmpfolder)
 9. [MethodSignatureConverter](#methodsignatureconverter)
+10. [ResultsAccumulator](#resultsaccumulator)
 
 # Usage with Maven
 
@@ -97,8 +100,6 @@ To use the `AndroZooUtils` class, you need the following:
 Please replace `<YOUR-API-KEY>`, `<PATH-TO-STORE-APKs>`, and `<APK-SHA256-HASH>` with your own details.
 
 **Note:** This class assumes you have the appropriate permissions to read from and write to the specified path. Please ensure the path is valid and you have the necessary permissions to avoid any issues.
-
-Certainly! Here's an updated readme section with code examples for each method provided by the `SootUtils` class:
 
 # SootUtils
 
@@ -592,6 +593,67 @@ To extract the sub-signature from a signature (method return type, name, and par
 ```java
 String subSig = converter.sigToSubSig("<com.example.MyClass: void myMethod(java.lang.String,int)>");
 // Returns "void myMethod(java.lang.String,int)"
+```
+
+
+## ResultsAccumulator
+
+### Overview
+
+The `ResultsAccumulator` class serves as a central repository to record, access, and print metrics within your application. As a singleton, it ensures there's only one instance throughout your application, thereby providing a consistent view of the metrics it gathers.
+
+### Usage
+
+#### Initialization
+
+The singleton instance of `ResultsAccumulator` can be retrieved using the `v()` method:
+
+```java
+ResultsAccumulator ra = ResultsAccumulator.v();
+```
+
+#### Setting Application Name
+
+You can set the application name using the `setAppName(String appName)` method:
+
+```java
+ra.setAppName("My Application");
+```
+
+#### Metric Manipulation
+
+Metrics are string keys associated with integer values. You can increment a metric using the `incrementMetric(String metric)` method. If the metric does not already exist, it will be created and set to 1:
+
+```java
+ra.incrementMetric("users");
+```
+
+You can get the current count of a specific metric using the `getMetric(String metric)` method. If the metric does not exist, it will return 0:
+
+```java
+int users = ra.getMetric("users");
+```
+
+#### Printing Results
+
+You can print the metrics in two formats:
+
+1. In a readable format using `printResults()`:
+
+    ```java
+    ra.printResults();
+    ```
+
+2. As a vector using `printVectorResults()`:
+
+    ```java
+    ra.printVectorResults();
+    ```
+
+The `getVectorResults()` method can be used to get a string representation of the metrics in a vector form:
+
+```java
+String vector = ra.getVectorResults();
 ```
 
 ## Built With
