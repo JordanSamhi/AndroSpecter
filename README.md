@@ -1,15 +1,56 @@
 # AndroSpecter Library
 
+Welcome to the `AndroSpecter` library, a collection of helper classes designed to streamline the static analysis of Java programs and Android apps. 
+This library is your one-stop solution for several common and not-so-common tasks in Java, enabling you to focus more on your core application logic rather than getting bogged down with intricate details.
+
+This library comprises several utility classes each serving unique purposes:
+
+- `AndroZooUtils`: Provides utilities for streamlined downloading of APK files from AndroZoo using a provided API key and path.
+
+- `FlowdroidUtils`: Dacilitates the initialization and execution of FlowDroid analyses on Android apps, providing convenient methods for setting up and running the analysis.
+
+- `Instrumenter`: Helps to add log statements to specific parts of your Android application's bytecode.
+
+- `LibrariesManager` and `SystemManager`: Provide utilities for managing libraries and system classes in Android apps.
+
+- `TmpFolder`: Provides easy access to the default temporary directory of the system.
+
+- `RedisManager`: Simplifies the interaction with a Redis server, providing easy-to-use functions for common operations.
+
+- `Writer`: Enhances console messaging with a suite of functions that allow for quick and easy printing of error, success, warning, and informational messages.
+
+- `MethodSignatureConverter`: This class is a handy tool when dealing with Java and Soot method signatures, providing methods for conversion and extraction of various components of these signatures.
+
+Each class is explained in detail further in this document, along with examples on how to use them.
+
+Whether you are a beginner just starting out with static analysis, or already a master looking for a way to increase your productivity, `AndroSpecter` is here to simplify your work.
+
+Do not hesitate to contribute may you have more idea to simplify the process of static analysis for Java and Android apps.
+
 ## Table of Contents
 
 1. [AndroZooUtils](#androzooutils)
-2. [FlowdroidUtils](#flowdroidutils)
-3. [Instrumenter](#instrumenter)
-4. [FilesManager](#filesmanager)
-5. [RedisManager](#redismanager)
-6. [Writer](#writer)
-7. [TmpFolder](#tmpfolder)
-8. [MethodSignatureConverter](#methodsignatureconverter)
+2. [SootUtils](#sootutils)
+3. [FlowdroidUtils](#flowdroidutils)
+4. [Instrumenter](#instrumenter)
+5. [FilesManager](#filesmanager)
+6. [RedisManager](#redismanager)
+7. [Writer](#writer)
+8. [TmpFolder](#tmpfolder)
+9. [MethodSignatureConverter](#methodsignatureconverter)
+
+# Usage with Maven
+
+To use `AndroSpecter` in your Maven project, you can simply add the following dependency to your project's `pom.xml` file:
+
+```xml
+<dependency>
+    <groupId>com.jordansamhi</groupId>
+    <artifactId>AndroSpecter</artifactId>
+    <version>0.1</version>
+</dependency>
+```
+
 
 # AndroZooUtils
 
@@ -57,6 +98,167 @@ Please replace `<YOUR-API-KEY>`, `<PATH-TO-STORE-APKs>`, and `<APK-SHA256-HASH>`
 
 **Note:** This class assumes you have the appropriate permissions to read from and write to the specified path. Please ensure the path is valid and you have the necessary permissions to avoid any issues.
 
+Certainly! Here's an updated readme section with code examples for each method provided by the `SootUtils` class:
+
+# SootUtils
+
+The `SootUtils` class is a utility class that provides various helper methods for working with the Soot framework, including Soot classes, methods, and call graphs.
+
+## Usage
+
+1. Create an instance of `SootUtils`:
+
+   ```java
+   SootUtils sootUtils = new SootUtils();
+   ```
+
+2. Use the methods provided by `SootUtils` to perform various operations on Soot classes, methods, and call graphs. The available methods include:
+
+   - `getMethodRef(String className, String methodName)`: Returns a `SootMethodRef` for the given class name and method name.
+
+   ```java
+   SootMethodRef methodRef = sootUtils.getMethodRef(className, methodName);
+   ```
+
+   - `getAllSuperClasses(SootClass sootClass)`: Returns a set of all superclasses of the given `SootClass`, including the immediate superclass.
+
+   ```java
+   Set<SootClass> superClasses = sootUtils.getAllSuperClasses(sootClass);
+   ```
+
+   - `getAllInterfaces(SootClass sootClass)`: Returns a set of all interfaces implemented by the given `SootClass`.
+
+   ```java
+   Set<SootClass> interfaces = sootUtils.getAllInterfaces(sootClass);
+   ```
+
+   - `getClassNames(Collection<SootClass> classes)`: Returns a set of the class names of the given list of `SootClasses`.
+
+   ```java
+   Set<String> classNames = sootUtils.getClassNames(classes);
+   ```
+
+   - `getNumberOfStmt(SootMethod sm)`: Returns the number of statements in the given `SootMethod`.
+
+   ```java
+   int stmtCount = sootUtils.getNumberOfStmt(sootMethod);
+   ```
+
+   - `getNumberOfStmtInApp()`: Returns the total number of statements in all application classes and methods.
+
+   ```java
+   int totalStmtCount = sootUtils.getNumberOfStmtInApp();
+   ```
+
+   - `getNumberOfStmtInAppWithoutLibraries()`: Returns the total number of statements in all application classes and methods except libraries.
+
+   ```java
+   int stmtCountWithoutLibraries = sootUtils.getNumberOfStmtInAppWithoutLibraries();
+   ```
+
+   - `getNumberOfStmt(Collection<SootMethod> methods)`: Returns the total number of statements in a collection of `SootMethod` objects.
+
+   ```java
+   int totalStmtCount = sootUtils.getNumberOfStmt(methods);
+   ```
+
+   - `getCountOfEdges(CallGraph cg)`: Returns the number of edges in the given `CallGraph`.
+
+   ```java
+   int edgeCount = sootUtils.getCountOfEdges(callGraph);
+   ```
+
+   - `getCountOfNodes(CallGraph cg)`: Returns the number of nodes in the given `CallGraph`.
+
+   ```java
+   int nodeCount = sootUtils.getCountOfNodes(callGraph);
+   ```
+
+   - `getComponentType(SootClass sc)`: Returns the type of Android component for the given `SootClass`.
+
+   ```java
+   String componentType = sootUtils.getComponentType(sootClass);
+   ```
+
+   - `isInCallGraph(SootMethod method, CallGraph cg)`: Checks whether the given `SootMethod` is in the given `CallGraph`.
+
+   ```java
+   boolean isInCallGraph = sootUtils.isInCallGraph(sootMethod, callGraph);
+   ```
+
+   - `isCalledInCallGraph(SootMethod method, CallGraph cg)`: Checks whether the given `SootMethod` is called in the given `CallGraph`.
+
+   ```java
+   boolean isCalled = sootUtils.isCalledInCallGraph(sootMethod, callGraph);
+   ```
+
+   - `getMethodsFromPackage(String packageName)`: Returns a set of all application methods that belong to the given package.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsFromPackage(packageName);
+   ```
+
+   - `getAllMethods()`: Returns a set of all `SootMethod` objects in the Scene.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getAllMethods();
+   ```
+
+   - `getClasses()`: Returns a set of `SootClass` objects representing all classes in the Soot Scene except the Dummy Main Class.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getClasses();
+   ```
+
+   - `getAllClasses()`: Returns a set of all the classes in the scene, including library classes.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getAllClasses();
+   ```
+
+   - `getAllMethodsExceptLibraries()`: Returns a set of all non-library `SootMethod` objects in the Scene.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getAllMethodsExceptLibraries();
+   ```
+
+   - `getAllClassesExceptLibraries()`: Returns a set of all non-library `SootClass` objects in the Scene.
+
+   ```java
+   Set<SootClass> classes = sootUtils.getAllClassesExceptLibraries();
+   ```
+
+   - `getMethodsInCallGraph(CallGraph cg)`: Returns a set of all the methods in the given `CallGraph`.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsInCallGraph(callGraph);
+   ```
+
+   - `getMethodsInCallGraphExceptLibraries(CallGraph cg)`: Returns a set of all the methods in the given `CallGraph` that are not from libraries.
+
+   ```java
+   Set<SootMethod> methods = sootUtils.getMethodsInCallGraphExceptLibraries(callGraph);
+   ```
+
+   - `getNonLibraryClasses()`: Returns a set of all non-library `SootClass` objects in the Soot Scene.
+
+   ```java
+   Set<SootClass> nonLibraryClasses = sootUtils.getNonLibraryClasses();
+   ```
+
+## Example
+
+Here's an example that demonstrates how to use the `SootUtils` class to retrieve all non-library classes in a Soot Scene:
+
+```java
+SootUtils sootUtils = new SootUtils();
+Set<SootClass> nonLibraryClasses = sootUtils.getNonLibraryClasses();
+for (SootClass sc : nonLibraryClasses) {
+    System.out.println(sc.getName());
+}
+```
+
+This will print the names of all non-library classes in the Soot Scene.
 
 # FlowdroidUtils
 
@@ -391,3 +593,16 @@ To extract the sub-signature from a signature (method return type, name, and par
 String subSig = converter.sigToSubSig("<com.example.MyClass: void myMethod(java.lang.String,int)>");
 // Returns "void myMethod(java.lang.String,int)"
 ```
+
+## Built With
+
+* [Maven](https://maven.apache.org/) - Dependency Management
+
+## License
+
+This project is licensed under the GNU LESSER GENERAL PUBLIC LICENSE 2.1 - see the [LICENSE](LICENSE) file for details
+
+## Contact
+
+For any question regarding this study, please contact us at:
+[Jordan Samhi](mailto:jordan.samhi@uni.lu)
