@@ -3366,7 +3366,6 @@ com.maicard
 portlet-api
 tech.greenfield
 net.nextpulse
-java
 com.lexalytics.semantria
 com.cryptlex
 com.oceanbase
@@ -6119,7 +6118,6 @@ com.object0r
 dev.srylax
 com.syriaalgadportal.libraries
 im.oen
-android
 com.onfido
 dev.krud
 edu.ysu.gradle
@@ -7131,7 +7129,6 @@ dev.continuously
 dev.kotx
 com.smartgwt
 lu.greenhalos
-com.android
 xyz.erupt
 eu.basicairdata
 mobi.cwiklinski
@@ -13920,7 +13917,6 @@ com.baremaps
 cn.tangjiabao
 net.schmizz
 ai.lum
-javax
 com.mainstreethub
 com.alecstrong
 com.genyherrera.performancelog
@@ -18071,7 +18067,6 @@ co.featbit
 gr.spiritinlife
 solutions.deepfield
 ru.mihailovprog
-com.google
 com.adaptc
 com.greenfoxacademy.huli-metrics-spring
 net.conquiris
