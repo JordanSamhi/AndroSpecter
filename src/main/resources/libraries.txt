@@ -424,7 +424,6 @@ com.draagon
 net.lakis
 fr.teamjoin
 de.katerkamp.szoo
-androidx.recommendation
 com.factorymarket
 com.pcl-solutions.maven
 de.adito
@@ -510,7 +509,6 @@ com.nectia
 net.datenstrudel
 xyz.dowenliu.etcd
 com.vaynberg.wicket
-androidx.transition
 cn.hserver
 com.testmile
 com.outbrain
@@ -543,7 +541,6 @@ com.ajmath.gradle-s3crets
 au.sfr.helm
 codes.matteo
 com.moyasar
-androidx.paging
 fr.cnieg
 ca.blarg
 is.yaks
@@ -938,7 +935,6 @@ ch.halarious
 nl.codestar
 de.l3s
 lpg.runtime
-androidx.lifecycle
 com.dfaris.query
 com.nmote
 com.robinvandenhurk.gateway.library
@@ -1144,7 +1140,6 @@ com.5831wan.mavencenter
 top.javagame
 xml-resolver
 com.raxdenstudios
-androidx.core
 com.dixa
 one.empty3
 com.colinalworth.gwt.websockets
@@ -1498,7 +1493,6 @@ com.mihnita
 com.fastasyncvoxelsniper
 com.beust
 com.brsanthu
-androidx.test
 in.yajnesh.util
 de.fuberlin.wiwiss.silk
 top.changelife
@@ -2004,7 +1998,6 @@ eu.cedarsoft
 com.ui4j
 de.intension
 com.sonicbase
-androidx.compose
 net.riccardocossu
 excalibur-util
 de.dimaki
@@ -2187,7 +2180,6 @@ regexp
 ca.mestevens
 com.digitalcipher
 net.cimadai
-androidx.contentpager
 com.exubero.jbehave
 zone.src.sheaf
 nl.lexemmens
@@ -2407,7 +2399,6 @@ groupid
 net.pravian
 com.monovore
 com.uulookingfor
-androidx.slidingpanelayout
 com.smoketurner
 com.juul
 xyz.zhangbohan
@@ -2869,7 +2860,6 @@ net.bjoernpetersen.visitorgen
 com.blueapron
 com.programmaticallyspeaking
 net.snowflake
-androidx.graphics
 com.inthebacklog
 com.caverock
 co.userwatch
@@ -3267,7 +3257,6 @@ com.kayrasolutions.aem
 de.sjwimmer.ta4j-charting
 com.kevincheng.gradle.ditto
 net.tribe-seven.swig
-androidx.remotecallback
 jp.westbrook.android
 codes.writeonce.jetscript
 dev.b3nedikt
@@ -3439,7 +3428,6 @@ net.openurp
 javadoc
 com.xnx3
 com.teslagov
-androidx.textclassifier
 com.couchbase
 com.a3test.component
 com.mantulife
@@ -3772,7 +3760,6 @@ dev.burnoo
 de.tuebingen.uni.sfs.germanet
 me.ibrt
 pl.pragmatists
-androidx.build.gradle.gcpbuildcache
 no.hackeriet
 com.bailizhang.lynxdb
 com.mzlion
@@ -3782,7 +3769,6 @@ dk.cooldev.easytiming
 com.ezoky
 dev.brella.kornea
 jmock
-androidx.benchmark
 ashkelon
 fr.dvilleneuve.android
 com.yuebaix
@@ -3856,7 +3842,6 @@ com.kiuwan
 com.pluhin
 p6spy
 com.logicalsapien.dataformat
-androidx.media
 com.dotdata
 jakarta.servlet
 com.stringflow.client
@@ -4012,7 +3997,6 @@ com.hootsuite
 cn.testnewbie.automation
 net.quanter
 com.scarabresearch
-androidx.enterprise
 com.frybits.harmony
 com.mapfinal
 win.oscene
@@ -4121,7 +4105,6 @@ net.amrhassan
 com.gruuf
 com.magicbell
 net.itarray
-androidx.media2
 com.sikulix
 com.tezro.api
 com.alexvasilkov
@@ -4132,7 +4115,6 @@ commons-jelly
 xyz.davidsimon
 com.duopeak
 com.pieceof8.gradle
-androidx.startup
 com.kraftics
 com.kynetics
 info.garagesalesapp.plugin.show-date-plugin
@@ -4480,7 +4462,6 @@ com.connectedinteractive
 jp.t2v
 com.oyorooms.buggers
 eu.medsea.mimeutil
-androidx.databinding
 su.litvak.chromecast
 app.kntrl
 com.haodanku.sdk
@@ -4631,7 +4612,6 @@ com.dute7liang
 com.skyail
 com.andrewjc
 net.unit8
-androidx.emoji2
 dev.racci.slimjar
 com.tarkalabs
 dev.bluefalcon
@@ -4702,7 +4682,6 @@ com.insightml
 com.jamshedalamqaderi.tawra-ktor-api-plugin
 com.molgames
 com.johnathangilday
-androidx.documentfile
 net.time4j
 com.sancromeu
 com.toao
@@ -5109,7 +5088,6 @@ com.makitoo
 it.moveax.sdkboilerplate
 com.supensour
 com.narmnevis.range
-androidx.health
 ir.mohammadesteki
 com.dyneti.android.distribution
 com.redislabs
@@ -5130,7 +5108,6 @@ com.webtide.hightide
 com.nummulus
 top.shareall
 com.triplelift.gdpr
-androidx.heifwriter
 co.touchlab
 com.fireflyhoo
 dev.saurabharora.lint.checks
@@ -5318,7 +5295,6 @@ net.thauvin.erik
 me.lachlanap
 fastutil
 net.minidev
-androidx.javascriptengine
 com.javaforge.scriptella
 gr.iti.mklab
 com.runtimeverification.rvmonitor
@@ -5463,7 +5439,6 @@ com.socketlabs
 com.marcospassos
 com.lambkit
 com.excelsecu.iot
-androidx.webkit
 avalon-apps
 com.de-swaef
 net.crosp.libs.android
@@ -5500,7 +5475,6 @@ com.cibuddy
 com.worldline
 com.bnorm
 com.danielrbaird.nativeStrings
-androidx.games
 cn.fastword
 calces.modules
 com.nectify
@@ -6042,7 +6016,6 @@ com.csicit
 com.guerinet.j2objcgradle
 com.gocardless
 com.createsend
-androidx.slice
 de.unidue.ltl
 com.raddatzk
 ro.isdc.wro4j
@@ -6902,7 +6875,6 @@ fr.nargit.rating
 name.mlopatkin.bitbucket
 de.sonallux.spotify
 eu.timepit
-androidx.glance
 de.gwdg.metadataqa
 com.jgeppert.struts2
 elect86.lwjgl
@@ -6930,7 +6902,6 @@ xalan
 ru.playa.keycloak
 jp.coppermine
 earth.cube
-androidx.privacysandbox.tools
 de.yourinspiration
 net.florat
 com.taypo
@@ -7272,7 +7243,6 @@ com.wujunhao1024
 com.devwu
 farm.shangrila
 com.jacobtread
-androidx.ads
 com.acjay
 com.levelrin
 com.uyoqu
@@ -7317,7 +7287,6 @@ com.consultwithcase.patternplus
 com.afrigis
 me.nullicorn
 cn.wanghaomiao
-androidx.gaming
 com.imaginary
 com.kamingpan
 one.tomorrow.transactional-outbox
@@ -7351,7 +7320,6 @@ com.juvenxu.portable-config-maven-plugin
 com.corgibytes
 com.sellware.quarkus-temporal
 com.spadesdk
-androidx.metrics
 com.mrcd.auto.mvp
 com.coroptis
 com.speedui
@@ -7652,7 +7620,6 @@ edu.chop.research
 de.atextor
 edu.sc.seis
 com.maestrano
-androidx.window
 com.appaloosa-store
 nl.tno.ids.ids-data-app-plugin
 com.6ack
@@ -8587,7 +8554,6 @@ com.rongji.dfish
 fi.otavanopisto
 com.liveramp
 de.dbck.poc
-androidx.security
 kr.heartpattern.spikot
 de.notizwerk
 top.bekit
@@ -8607,7 +8573,6 @@ xtiff-jai
 com.ghunteranderson
 com.freewayso
 maxq
-androidx.exifinterface
 com.braango
 com.tinkerpop
 cn.ipokerface
@@ -8832,7 +8797,6 @@ com.foreveross
 com.urbanairship
 com.ellucian
 tokyo.northside
-androidx.emoji
 ktorm-tools.ktorm-generator
 space.vectrix
 com.sandjelkovic.kxjtime
@@ -9082,7 +9046,6 @@ com.datto
 ru.radiationx
 com.tlorrain.android.rezenerator
 at.schmutterer.oss
-androidx.concurrent
 ir.twostepverification.sdk
 com.arhs-group
 cn.xusc
@@ -9253,7 +9216,6 @@ com.cantrowitz
 net.exogeni
 com.machinezoo
 ai.meson.sdk
-androidx.tvprovider
 cc.kave
 com.frontegg
 fr.isee-u.safer
@@ -9273,7 +9235,6 @@ com.codebreeze
 com.usercentrics.sdk
 zone.wmj
 xyz.jorgecastro
-androidx.sqlite
 com.artisan-software.glide
 com.pauldijou
 com.alejoHomes.jasmine
@@ -9287,7 +9248,6 @@ aws.sdk.kotlin
 com.transmitsecurity
 dev.tasso
 com.mulesoft
-androidx.print
 com.mirror.plugins
 me.xuxiaoxiao
 com.treelogic-swe
@@ -9420,7 +9380,6 @@ vast.gradle-spring-environments
 com.cogpunk
 by.egorr.gradle.ktsexec-plugin
 ink.kob
-androidx.constraintlayout
 de.charlex
 com.esaulpaugh
 top.goodz
@@ -9635,7 +9594,6 @@ com.luciocossio
 jisp
 dk.langli
 net.kilger.mockins
-androidx.cursoradapter
 com.keyholesoftware
 com.image-charts
 com.nullables
@@ -9869,7 +9827,6 @@ com.telqtele
 dev.mayuna
 com.thesamet
 net.thucydides
-androidx.savedstate
 info.novatec
 com.ironcorelabs
 in.at0m
@@ -10298,7 +10255,6 @@ com.fraudlabspro
 de.125m125.kt
 fr.it4pme
 com.dafruits
-androidx.biometric
 de.baerinteractive
 com.inmorn
 one.taya.fabrigradle
@@ -10383,7 +10339,6 @@ sh.tak.appbundler
 com.blockpointdb
 com.wkovacs64
 com.azaptree
-androidx.asynclayoutinflater
 live.lingting
 com.nicolaswinsten
 nebula.maven-resolved-dependencies-jar
@@ -10498,7 +10453,6 @@ com.tractionsoftware
 com.hds.hcpaw
 com.lodborg
 net.piotrturski
-androidx.vectordrawable
 dev.forcetower.unes
 com.forticode.cipherise
 com.kameleoon
@@ -10705,7 +10659,6 @@ ca.nexapp
 com.auginte
 com.mealticket
 com.toast
-androidx.preference
 com.imagingbook
 com.shalloui
 net.uvavru.maven.plugin
@@ -10740,7 +10693,6 @@ com.xwsos
 com.flagstonesoftware
 com.eccyan
 id.gits
-androidx.swiperefreshlayout
 com.monkeylearn
 com.marcelkliemannel
 com.zhu8fei.easy-test
@@ -10753,7 +10705,6 @@ pl.stachuofficial
 com.itmaoo.common.convert
 eu.prismacapacity
 us.ihmc
-androidx.localbroadcastmanager
 com.sonalake
 nu.studer
 joda-time
@@ -10853,7 +10804,6 @@ net.kaliber
 dev.kord
 com.yetu
 de.schablinski.activejdbc-gradle-plugin
-androidx.viewpager
 it.larus-ba
 dev.kosrat
 d3code.macappbundle
@@ -11226,7 +11176,6 @@ de.fabmax
 cc.protea
 com.lijinchao
 com.cueker.util
-androidx.car
 com.dst-pro
 com.chitbazaar
 com.soulgalore
@@ -11572,7 +11521,6 @@ com.sauloaraujo
 com.luckypines
 top.fanua.doctor
 cn.vonce
-androidx.coordinatorlayout
 com.gamemorefun
 com.kangaroohy
 cn.smartcoding
@@ -11997,7 +11945,6 @@ dev.shreyaspatil
 com.brianpritchett
 de.jplag
 com.xobotun
-androidx.loader
 com.eonliu.packer
 biz.dfch.j
 co.spraybot
@@ -12102,7 +12049,6 @@ info.guardianproject
 de.aservo
 avalon-meta
 de.isc-software.maven
-androidx.arch.core
 ca.voidstarzero
 com.sodyo
 com.verhas
@@ -12379,7 +12325,6 @@ win.delin
 merlin-tutorial
 sax
 com.guujiang
-androidx.annotation
 fr.inria
 com.regiocom.bpo
 com.vimhe
@@ -12521,7 +12466,6 @@ com.ghosthack
 me.lucko
 com.azwul.api
 nl.sedit
-androidx.input
 com.zachklipp
 ug.co.intelworld
 cn.asany.chaos
@@ -12570,7 +12514,6 @@ jama
 com.capitaltg
 br.usp
 com.toceansoft
-androidx.work
 co.netscal
 exml
 com.haulmont
@@ -12683,7 +12626,6 @@ com.cloudsnorkel
 com.yamanyar
 axion
 com.marklogic
-androidx.sharetarget
 com.quantego
 group.springframework
 com.sogou.module
@@ -12695,7 +12637,6 @@ com.coredot
 jaimbot
 com.astralanguage
 xsul
-androidx.wear
 excalibur-event
 sh.brocode
 ch.j3t
@@ -12950,7 +12891,6 @@ com.maxpay.android
 eu.stderr.shibboleth
 com.mammb
 com.digium.respoke
-androidx.media3
 com.neolumia.license
 com.mechalikh
 net.jcazevedo
@@ -13262,7 +13202,6 @@ eu.stamp-project
 net.kut3
 cup.gradle.cup-gradle-plugin
 es.atrujillo.mjml
-androidx.drawerlayout
 com.initiative-soft
 com.luissoares
 com.naytev
@@ -13366,7 +13305,6 @@ name.kevinlocke.appveyor
 com.avanza
 com.rhcloud
 com.wavecell.voice
-androidx.palette
 systems.dmx
 co.datadudes
 com.innoq
@@ -13483,7 +13421,6 @@ de.mobilej.unmock
 info.gconfig
 com.rudderstack
 pl.marchwicki
-androidx.appsearch
 com.andretietz
 de.mvitz
 net.fbridault.eeel
@@ -13497,7 +13434,6 @@ pl.softmate.gradle-properties-yaml-plugin
 com.ensime
 net.adamjenkins
 net.immute
-androidx.versionedparcelable
 dev.sergiobelda.android.companion
 ca.johnhorman.maven
 com.stackstate
@@ -13563,7 +13499,6 @@ nebula.release
 cn.tellyouwhat
 com.mattjhoffman
 ch.pontius.nio
-androidx.cardview
 dk.swissarmyronin
 com.quickbirdstudios
 com.enterprisedt
@@ -13656,7 +13591,6 @@ com.bevuta
 com.monarchapis
 com.bimbr
 com.baremetalcloud
-androidx.mediarouter
 com.energizedwork
 me.hz89.library
 me.naganithin.bdaa
@@ -13770,7 +13704,6 @@ com.tascape
 me.chongchong
 com.mks.api
 saxon
-androidx.gridlayout
 rocks.grape
 com.oroarmor
 fr.apiscol.metadata
@@ -13860,7 +13793,6 @@ de.androidpit
 net.jkernelmachines
 fr.figarocms
 me.palazzetti
-androidx.tv
 com.pidanic
 com.revolut
 store.javac.fyutil
@@ -14032,7 +13964,6 @@ de.fegbers
 com.bartoszgajda.scalaopenweathermap
 net.jetblack.feedbus
 com.beyondconstraint.sqlking
-androidx.leanback
 solutions.xivo
 com.swirl
 com.barista-v
@@ -14135,7 +14066,6 @@ com.qianduner
 com.angusmorton
 com.abstractelemental
 de.mwvb
-androidx.profileinstaller
 com.konaire.numeric-keyboard
 cn.torna
 com.jfz.plugin.pin
@@ -14305,7 +14235,6 @@ me.adkhambek
 com.zhg2yqq
 com.char2lang
 com.leadiq
-androidx.interpolator
 fr.ggaly
 maven-proxy
 de.qytera
@@ -15093,7 +15022,6 @@ nrlssc.hgit
 com.metamap
 com.tempoiq
 com.mounacheikhna
-androidx.multidex
 com.loyalsound
 com.alianga
 com.kaching.platform
@@ -15418,7 +15346,6 @@ jaci.gradle.EmbeddedTools
 com.dbvis
 de.foellix
 com.naspat
-androidx.resourceinspection
 de.cyclon-softworx
 net.jnellis
 ir.bitrah
@@ -15634,7 +15561,6 @@ ch.tatool
 com.esri
 net.lecousin
 com.sixt
-androidx.tracing
 de.mr-pine.utils
 com.citruspay.sdk
 com.lvliangjun
@@ -15773,7 +15699,6 @@ com.rabidgremlin
 com.silamoney.client
 de.peilicke.sascha
 com.outtherelabs
-androidx.activity
 excalibur-extension
 dev.errant
 info.magnolia
@@ -16172,7 +16097,6 @@ net.glxn
 com.tailrocks
 xyz.truenight
 de.bmiag.tapir
-androidx.browser
 party.para
 com.peterlavalle
 ch.aaap
@@ -16219,7 +16143,6 @@ com.zackehh
 com.tuyenmonkey
 com.rewardsnetwork
 com.mangofactory
-androidx.recyclerview
 com.bulwinkel.gradle.git-version
 de.breuco
 com.ppdai
@@ -16368,7 +16291,6 @@ grizzly-cachetest
 cn.sj1
 de.samply
 pe.com.sss
-androidx.viewpager2
 mpern.sap.commerce
 net.consensys
 com.bordercloud
@@ -16500,7 +16422,6 @@ xyz.xenondevs
 tech.ikora
 com.cybersource
 me.shaftesbury
-androidx.percentlayout
 fr.funixgaming
 com.sumologic
 de.heinrichmarkus.gradle.delphi
@@ -17752,7 +17673,6 @@ cn.ymotel
 dev.esnault.wanakana
 com.consolefire
 net.uiqui
-androidx.customview
 com.lyncode
 pro.topme
 com.nispok
@@ -17762,7 +17682,6 @@ me.ddayo
 com.robotemi
 com.x-breeze
 de.aipark
-androidx.navigation
 in.kiranbagul
 com.javabaas
 com.coditory
@@ -18036,7 +17955,6 @@ de.quist.apps.maps
 fr.xpdustry.toxopid
 net.nowina.cadmelia
 com.navid.LoggerGeneratorPlugin
-androidx.hilt
 com.diyalotech
 in.nvilla
 com.celeral
@@ -18103,7 +18021,6 @@ de.voidnode.trading4j
 tech.epic-breakfast-productions.openQuarterMaster.lib
 com.nightlynexus
 com.javaen
-androidx.room
 no.flowlab.plugins
 com.arronlong
 com.easypre
@@ -18316,7 +18233,6 @@ com.zegreatrob
 com.viadeo.axonframework
 de.hammwerk
 se.bjurr
-androidx.ui
 red.stu.coder
 xyz.gabear
 tech.cassandre.trading.bot
@@ -18807,7 +18723,6 @@ de.slevermann
 com.jptangchina
 wang.ramboll
 bio.singa
-androidx.autofill
 dalma
 de.dailab
 com.zzmoon.base
@@ -18859,7 +18774,6 @@ net.soundvibe
 com.codesniper.plugin
 com.techshroom
 net.kigawa.kutil
-androidx.fragment
 com.aylvn
 com.minimob
 com.kifi
@@ -18995,7 +18909,6 @@ com.juntaki
 com.onegini
 ai.lucidtech
 com.akuleshov7
-androidx.legacy
 com.teamwizardry.librarianlib
 com.colobu
 in.shipk
@@ -19010,7 +18923,6 @@ com.top10
 com.wuzhenpay
 top.dataframe
 com.the99tests.photon
-androidx.collection
 com.mrhaki.groovyrun
 com.21ber
 com.stepango
@@ -19124,7 +19036,6 @@ com.locurasoft
 com.tasomaniac
 com.oscarsalguero
 me.kieranwallbanks
-androidx.draganddrop
 net.catte
 net.segner.maven.plugins
 de.ecclesia.kipeto
@@ -19197,7 +19108,6 @@ co.stateful
 com.intesens
 int.esa
 cn.pengh.pbase
-androidx.appcompat
 it.kamaladafrica
 com.wexalian
 com.tophermiller
@@ -19987,7 +19897,6 @@ net.n2oapp
 de.undercouch
 xyz.vopen
 com.joptimizer
-androidx.dynamicanimation
 com.kaderate
 com.y3tu
 com.galenframework
@@ -20062,7 +19971,6 @@ cn.chenlh
 work.shart
 com.datatiny.tools
 com.zonzonzon
-androidx.datastore
 com.shadowoflies
 info.freelibrary
 com.kfaraj.support
@@ -20088,7 +19996,6 @@ com.ubervu
 cf.roooster
 com.karmanno.plugins
 cn.renlm.plugins
-androidx.camera
 com.warnyul.android.fast-video-view
 ant
 com.synditcorp
