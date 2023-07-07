@@ -38,6 +38,8 @@ import java.util.*;
 /**
  * Utility class for working with the Soot framework. Provides various helper methods for working with Soot classes,
  * methods, and call graphs.
+ *
+ * @author Jordan Samhi
  */
 public class SootUtils {
 
@@ -45,12 +47,20 @@ public class SootUtils {
     private final Set<SootClass> classes;
     private final Set<SootMethod> srcInCG;
     private final Set<SootMethod> tgtInCG;
+    private final Set<SootMethod> allMethods;
+    private final Set<SootMethod> allMethodsExceptLibraries;
+    private final Set<SootMethod> allMethodsInCallGraph;
+    private final Set<SootMethod> allMethodsInCallGraphExceptLibraries;
 
     public SootUtils() {
         this.nonLibraryClasses = new HashSet<>();
         this.classes = new HashSet<>();
         this.srcInCG = new HashSet<>();
         this.tgtInCG = new HashSet<>();
+        this.allMethods = new HashSet<>();
+        this.allMethodsExceptLibraries = new HashSet<>();
+        this.allMethodsInCallGraph = new HashSet<>();
+        this.allMethodsInCallGraphExceptLibraries = new HashSet<>();
     }
 
     /**
@@ -186,29 +196,27 @@ public class SootUtils {
     }
 
     /**
-     * Returns the number of nodes in the given CallGraph.
+     * This method counts the number of unique nodes in the provided call graph. A node is considered unique
+     * based on its method signature. Both source and target nodes of all edges in the call graph are considered.
      *
-     * @param cg the CallGraph for which to count nodes
-     * @return the number of nodes in the given CallGraph
+     * @param cg CallGraph object for which the unique node count is to be calculated.
+     * @return The number of unique nodes in the provided call graph.
      */
     public int getCountOfNodes(CallGraph cg) {
+        Set<SootMethod> nodes = new HashSet<>();
         Iterator<Edge> it = cg.iterator();
         Edge next;
         SootMethod src, tgt;
-        List<SootMethod> nodes = new ArrayList<>();
         while (it.hasNext()) {
             next = it.next();
             src = next.src();
             tgt = next.tgt();
-            if (!nodes.contains(src)) {
-                nodes.add(src);
-            }
-            if (!nodes.contains(tgt)) {
-                nodes.add(tgt);
-            }
+            nodes.add(src);
+            nodes.add(tgt);
         }
         return nodes.size();
     }
+
 
     /**
      * Returns the type of Android component for the given SootClass.
@@ -242,32 +250,70 @@ public class SootUtils {
      */
     public boolean isInCallGraph(SootMethod method, CallGraph cg) {
         if (this.srcInCG.isEmpty() || this.tgtInCG.isEmpty()) {
-            for (Edge edge : cg) {
-                if (edge != null) {
-                    this.srcInCG.add(edge.src());
-                    this.tgtInCG.add(edge.tgt());
-                }
-            }
+            this.populateCallGraphSets(cg);
         }
         return this.srcInCG.contains(method) || this.tgtInCG.contains(method);
     }
 
     /**
-     * Checks whether the given SootMethod is called in the given CallGraph.
+     * Populates the sets containing the methods present in the call graph. The sets include source methods, target methods,
+     * and all methods. It also populates a set containing all methods excluding those from library classes.
+     * This method should be used for pre-calculation to optimize repeated calls for these method sets in the call graph.
      *
-     * @param method the SootMethod to check for in the CallGraph
-     * @param cg     the CallGraph to search for calls to the SootMethod
-     * @return true if the SootMethod is called in the CallGraph, false otherwise
+     * @param cg the call graph used to populate the method sets
      */
-    public boolean isCalledInCallGraph(SootMethod method, CallGraph cg) {
+    private void populateCallGraphSets(CallGraph cg) {
+        Set<SootClass> nonLibraryClasses = this.getNonLibraryClasses();
+
         for (Edge edge : cg) {
             if (edge != null) {
-                if (edge.tgt().equals(method)) {
-                    return true;
+                SootMethod src = edge.src();
+                SootMethod tgt = edge.tgt();
+
+                if (src != null) {
+                    SootClass srcClass = src.getDeclaringClass();
+                    if (!isDummyMainClass(srcClass)) {
+                        this.srcInCG.add(src);
+                    }
+                    if (nonLibraryClasses.contains(srcClass)) {
+                        this.allMethodsInCallGraphExceptLibraries.add(src);
+                    }
+                }
+
+                if (tgt != null) {
+                    SootClass tgtClass = tgt.getDeclaringClass();
+                    if (!isDummyMainClass(tgtClass)) {
+                        this.tgtInCG.add(tgt);
+                    }
+                    if (nonLibraryClasses.contains(tgtClass)) {
+                        this.allMethodsInCallGraphExceptLibraries.add(tgt);
+                    }
                 }
             }
         }
-        return false;
+
+        this.allMethodsInCallGraph.addAll(this.srcInCG);
+        this.allMethodsInCallGraph.addAll(this.tgtInCG);
+    }
+
+
+    /**
+     * Checks whether the given SootMethod is called in the given CallGraph.
+     * <p>
+     * This method uses a set to cache the target methods in the CallGraph. If the cache is empty,
+     * it iterates through the edges in the CallGraph, and adds the target method of each edge to the cache.
+     * <p>
+     * Finally, it checks if the given method is in the cache, and returns the result.
+     *
+     * @param method The SootMethod to check for in the CallGraph
+     * @param cg     The CallGraph to search for calls to the SootMethod
+     * @return True if the SootMethod is called in the CallGraph, false otherwise
+     */
+    public boolean isCalledInCallGraph(SootMethod method, CallGraph cg) {
+        if (this.tgtInCG.isEmpty()) {
+            this.populateCallGraphSets(cg);
+        }
+        return this.tgtInCG.contains(method);
     }
 
     /**
@@ -293,16 +339,20 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of all Soot methods in the Scene.
+     * Returns a set of all Soot methods in the Scene. The methods are computed and stored
+     * in a class field the first time this method is called, and the stored value is used for
+     * subsequent calls.
      *
      * @return a set of all Soot methods in the Scene.
      */
     public Set<SootMethod> getAllMethods() {
-        Set<SootMethod> methods = new HashSet<>();
-        for (SootClass sc : this.getClasses()) {
-            methods.addAll(sc.getMethods());
+        // If allMethods has not been computed yet, do it now.
+        if (this.allMethods.isEmpty()) {
+            for (SootClass sc : this.getClasses()) {
+                this.allMethods.addAll(sc.getMethods());
+            }
         }
-        return methods;
+        return this.allMethods;
     }
 
     /**
@@ -332,24 +382,19 @@ public class SootUtils {
 
     /**
      * Returns a set of all Soot methods except those for which their class is part of the AndroLibZoo library whitelist.
+     * <p>
+     * This method caches the results to prevent unnecessary computation in repeated calls. If the cache is null, it calculates
+     * the set of all non-library Soot methods and stores it in the cache. Otherwise, it returns the cached result.
      *
      * @return A set of all non-library Soot methods in the Scene.
      */
     public Set<SootMethod> getAllMethodsExceptLibraries() {
-        Set<SootMethod> methods = new HashSet<>();
-        for (SootClass sc : this.getNonLibraryClasses()) {
-            methods.addAll(sc.getMethods());
+        if (this.allMethodsExceptLibraries.isEmpty()) {
+            for (SootClass sc : this.getNonLibraryClasses()) {
+                allMethodsExceptLibraries.addAll(sc.getMethods());
+            }
         }
-        return methods;
-    }
-
-    /**
-     * Returns a set of all Soot classes except those that are part of the AndroLibZoo library whitelist.
-     *
-     * @return A set of all non-library Soot classes in the Scene.
-     */
-    public Set<SootClass> getAllClassesExceptLibraries() {
-        return this.getNonLibraryClasses();
+        return this.allMethodsExceptLibraries;
     }
 
     /**
@@ -359,44 +404,27 @@ public class SootUtils {
      * @return a set of all the methods in the given call graph
      */
     public Set<SootMethod> getMethodsInCallGraph(CallGraph cg) {
-        Set<SootMethod> methods = new HashSet<>();
-        for (Edge edge : cg) {
-            if (edge != null) {
-                SootMethod src = edge.src();
-                SootMethod tgt = edge.tgt();
-                if (src != null) {
-                    if (!isDummyMainClass(src.getDeclaringClass())) {
-                        methods.add(src);
-                    }
-                }
-                if (tgt != null) {
-                    if (!isDummyMainClass(tgt.getDeclaringClass())) {
-                        methods.add(tgt);
-                    }
-                }
-            }
+        if (this.allMethodsInCallGraph.isEmpty()) {
+            populateCallGraphSets(cg);
         }
-        return methods;
+        return this.allMethodsInCallGraph;
     }
 
+
     /**
-     * Returns a set of all the methods in the given call graph that are not from libraries
+     * Returns a set of all the methods in the given call graph that are not from libraries.
+     * The method uses a cached set of methods if available to improve performance.
      *
      * @param cg the call graph to extract methods from
-     * @return a set of all the methods in the given call graph that are not libraries
+     * @return a set of all the methods in the given call graph that are not from libraries
      */
     public Set<SootMethod> getMethodsInCallGraphExceptLibraries(CallGraph cg) {
-        Set<SootMethod> methods = new HashSet<>();
-        Set<SootClass> nonLibraryClasses = this.getAllClassesExceptLibraries();
-        for (SootClass sc : nonLibraryClasses) {
-            for (SootMethod sm : sc.getMethods()) {
-                if (this.isInCallGraph(sm, cg)) {
-                    methods.add(sm);
-                }
-            }
+        if (this.allMethodsInCallGraphExceptLibraries.isEmpty()) {
+            populateCallGraphSets(cg);
         }
-        return methods;
+        return this.allMethodsInCallGraphExceptLibraries;
     }
+
 
     /**
      * Returns a set of all non-library classes in the Soot Scene.
