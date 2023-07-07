@@ -32,6 +32,8 @@ import soot.options.Options;
 /**
  * Implementation of the {@link IInfoflowConfig} interface.
  * This class sets the Soot options required for the analysis, based on the given configuration.
+ *
+ * @author Jordan Samhi
  */
 public class SootConfig implements IInfoflowConfig {
 

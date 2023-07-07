@@ -33,6 +33,8 @@ import java.util.TimerTask;
 /**
  * The TimeOut class provides a simple mechanism for setting a timeout duration,
  * launching a timer, and triggering a task when the timeout expires.
+ *
+ * @author Jordan Samhi
  */
 public class TimeOut {
 

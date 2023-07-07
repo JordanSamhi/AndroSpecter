@@ -37,6 +37,8 @@ import java.util.Map;
 
 /**
  * Singleton class for instrumenting SootMethods
+ *
+ * @author Jordan Samhi
  */
 public class Instrumenter {
 

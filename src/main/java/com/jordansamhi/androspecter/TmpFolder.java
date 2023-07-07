@@ -28,6 +28,8 @@ package com.jordansamhi.androspecter;
 /**
  * This class provides a singleton instance of a temporary folder utility class
  * that allows to get the path to the default temporary directory for the current system.
+ *
+ * @author Jordan Samhi
  */
 public class TmpFolder {
 

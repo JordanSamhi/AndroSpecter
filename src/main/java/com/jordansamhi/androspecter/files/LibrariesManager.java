@@ -32,6 +32,8 @@ import soot.SootClass;
  * The LibrariesManager class is responsible for loading and managing the list of known library packages.
  * It extends the {@link FileLoader} abstract class to load the list of library packages from a file at startup.
  * The singleton pattern is used to ensure only one instance of this class is created.
+ *
+ * @author Jordan Samhi
  */
 public class LibrariesManager extends FileLoader {
 

@@ -27,6 +27,8 @@ package com.jordansamhi.androspecter.utils;
 
 /**
  * A collection of constant values used throughout the project.
+ *
+ * @author Jordan Samhi
  */
 public class Constants {
 

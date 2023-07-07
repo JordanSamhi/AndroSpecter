@@ -36,6 +36,8 @@ import java.net.URLEncoder;
 
 /**
  * Utility class for downloading APK files from AndroZoo using the provided API key and path.
+ *
+ * @author Jordan Samhi
  */
 public class AndroZooUtils {
 

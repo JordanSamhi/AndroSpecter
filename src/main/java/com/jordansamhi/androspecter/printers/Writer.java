@@ -27,6 +27,8 @@ package com.jordansamhi.androspecter.printers;
 
 /**
  * Provides methods for printing messages to the console with different types of prefix indicators.
+ *
+ * @author Jordan Samhi
  */
 public class Writer {
 

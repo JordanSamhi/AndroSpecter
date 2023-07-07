@@ -5,6 +5,8 @@ import java.util.StringJoiner;
 
 /**
  * Singleton class that accumulates results metrics.
+ *
+ * @author Jordan Samhi
  */
 public class ResultsAccumulator {
 

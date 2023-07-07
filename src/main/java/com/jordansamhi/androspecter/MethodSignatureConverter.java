@@ -31,6 +31,8 @@ import java.util.List;
 /**
  * A utility class for converting Java method signatures to Soot method signatures, and extracting various components of
  * method signatures (class name, method name, return type, and parameter names).
+ *
+ * @author Jordan Samhi
  */
 public class MethodSignatureConverter {
 
