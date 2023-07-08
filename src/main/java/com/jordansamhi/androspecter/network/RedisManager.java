@@ -70,4 +70,20 @@ public class RedisManager {
     public String spop(String set) {
         return this.jedis.spop(set);
     }
+
+    /**
+     * Adds a member to a Redis set using the connection established by this RedisManager.
+     * <p>
+     * If the specified set does not exist, a new set is created and the member is added to it.
+     * If the set already exists and contains the specified member, the command has no effect.
+     * Note that the set is not ordered and each member of a set is unique.
+     *
+     * @param set the name of the Redis set to which to add the member
+     * @param val the member to add to the Redis set
+     */
+    public void sadd(String set, String val) {
+        this.jedis.select(0);
+        this.jedis.sadd(set, val);
+    }
+
 }
