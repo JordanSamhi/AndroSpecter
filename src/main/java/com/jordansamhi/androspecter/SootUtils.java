@@ -186,14 +186,39 @@ public class SootUtils {
     }
 
     /**
-     * Returns the number of edges in the given CallGraph.
+     * Counts the number of edges in the given call graph.
      *
-     * @param cg the CallGraph for which to count edges
-     * @return the number of edges in the given CallGraph
+     * @param cg the CallGraph object for which the count is to be calculated
+     * @return the number of edges in the given call graph
      */
-    public int getCountOfEdges(CallGraph cg) {
+    public int countEdgesInCallGraph(CallGraph cg) {
         return cg.size();
     }
+
+    /**
+     * Counts the number of edges in the given call graph where the target of the edge
+     * is a method declared in a non-library class. A non-library class is defined as
+     * any class that is not part of a library.
+     *
+     * @param cg the CallGraph object for which the count is to be calculated
+     * @return the number of edges in the call graph where the target of the edge is
+     * a method declared in a non-library class
+     */
+    public int countEdgesWithNonLibraryTargets(CallGraph cg) {
+        int count = 0;
+        Set<SootClass> nonLibraryClasses = this.getNonLibraryClasses();
+        SootMethod tgt = null;
+        SootClass parentClass = null;
+        for (Edge e : cg) {
+            tgt = e.tgt();
+            parentClass = tgt.getDeclaringClass();
+            if (nonLibraryClasses.contains(parentClass)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
 
     /**
      * This method counts the number of unique nodes in the provided call graph. A node is considered unique
@@ -203,18 +228,10 @@ public class SootUtils {
      * @return The number of unique nodes in the provided call graph.
      */
     public int getCountOfNodes(CallGraph cg) {
-        Set<SootMethod> nodes = new HashSet<>();
-        Iterator<Edge> it = cg.iterator();
-        Edge next;
-        SootMethod src, tgt;
-        while (it.hasNext()) {
-            next = it.next();
-            src = next.src();
-            tgt = next.tgt();
-            nodes.add(src);
-            nodes.add(tgt);
+        if (this.allMethodsInCallGraph.isEmpty()) {
+            this.populateCallGraphSets(cg);
         }
-        return nodes.size();
+        return this.allMethodsInCallGraph.size();
     }
 
 
