@@ -2,6 +2,8 @@ package com.jordansamhi.androspecter.network;
 
 import redis.clients.jedis.Jedis;
 
+import java.util.List;
+
 /*-
  * #%L
  * AndroSpecter
@@ -86,4 +88,88 @@ public class RedisManager {
         this.jedis.sadd(set, val);
     }
 
+    /**
+     * Checks if a member is part of a Redis set.
+     *
+     * @param set the name of the Redis set
+     * @param val the member to check
+     * @return true if the member is part of the set, false otherwise
+     */
+    public boolean sismember(String set, String val) {
+        return this.jedis.sismember(set, val);
+    }
+
+    /**
+     * Gets the length of a Redis list.
+     *
+     * @param list the name of the Redis list
+     * @return the length of the list
+     */
+    public long llen(String list) {
+        return this.jedis.llen(list);
+    }
+
+    /**
+     * Gets the number of members in a Redis set.
+     *
+     * @param set the name of the Redis set
+     * @return the number of members in the set
+     */
+    public long scard(String set) {
+        return this.jedis.scard(set);
+    }
+
+    /**
+     * Gets a range of elements from a Redis list.
+     *
+     * @param list  the name of the Redis list
+     * @param start the start index of the range
+     * @param end   the end index of the range
+     * @return a List of elements in the specified range
+     */
+    public List<String> lrange(String list, long start, long end) {
+        return this.jedis.lrange(list, start, end);
+    }
+
+    /**
+     * Removes the first count occurrences of elements equal to value from the list stored at key.
+     *
+     * @param list  the name of the Redis list
+     * @param count the count of elements to be removed
+     * @param value the value to be removed
+     * @return the number of removed elements
+     */
+    public long lrem(String list, long count, String value) {
+        return this.jedis.lrem(list, count, value);
+    }
+
+    /**
+     * Gets the value of the specified key.
+     *
+     * @param key the key
+     * @return the value of the specified key
+     */
+    public String get(String key) {
+        return this.jedis.get(key);
+    }
+
+    /**
+     * Sets the specified key to the specified value.
+     *
+     * @param key   the key
+     * @param value the value
+     */
+    public void set(String key, String value) {
+        this.jedis.set(key, value);
+    }
+
+    /**
+     * Deletes one or more keys.
+     *
+     * @param keys the keys
+     * @return The number of keys that were removed.
+     */
+    public long del(String... keys) {
+        return this.jedis.del(keys);
+    }
 }
