@@ -207,13 +207,15 @@ public class SootUtils {
     public int countEdgesWithNonLibraryTargets(CallGraph cg) {
         int count = 0;
         Set<SootClass> nonLibraryClasses = this.getNonLibraryClasses();
-        SootMethod tgt = null;
-        SootClass parentClass = null;
+        SootMethod tgt;
+        SootClass parentClass;
         for (Edge e : cg) {
             tgt = e.tgt();
-            parentClass = tgt.getDeclaringClass();
-            if (nonLibraryClasses.contains(parentClass)) {
-                count++;
+            if (tgt != null) {
+                parentClass = tgt.getDeclaringClass();
+                if (nonLibraryClasses.contains(parentClass)) {
+                    count++;
+                }
             }
         }
         return count;
