@@ -28,7 +28,7 @@ package com.jordansamhi.androspecter.utils;
 /**
  * A collection of constant values used throughout the project.
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class Constants {
 
@@ -37,6 +37,8 @@ public class Constants {
      */
     public static final String LIBRARIES_FILE = "/libraries.txt";
     public static final String SYSTEMS_FILE = "/systems.txt";
+
+    public static final String SOURCES_SINKS_FILE = "/sourcesAndSinks.txt";
 
     /**
      * Classes
@@ -61,4 +63,6 @@ public class Constants {
     public static final String CONTENT_PROVIDER = "ContentProvider";
     public static final String SERVICE = "Service";
     public static final String NON_COMPONENT = "non-component";
+    public static final String SOURCE = "SOURCE";
+    public static final String SINK = "SINK";
 }
