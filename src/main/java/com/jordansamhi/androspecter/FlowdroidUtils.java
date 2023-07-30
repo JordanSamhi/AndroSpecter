@@ -116,7 +116,7 @@ public class FlowdroidUtils {
      * "Found leak:
      *   - From [source]
      *     - Detailed path:
-     *        [statement] => in method: [method]
+     *        [statement] =&gt; in method: [method]
      *   - To [sink]"
      *
      * If no flow is found, a warning message is printed.

@@ -5,6 +5,7 @@ import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
 import soot.util.Chain;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -63,10 +64,11 @@ public class Instrumenter {
     }
 
     /**
-     * Adds a log statement to all methods of application classes.
-     * Returns a Transform object which encapsulates the added transformation for the "jtp" (Jimple Transformation Pack) phase.
+     * Adds a log statement to all methods of application classes. Returns a Transform object which encapsulates
+     * the added transformation for the specified phase.
      *
-     * @param tagToLog the tag to be used in the log statement.
+     * @param tagToLog  the tag to be used in the log statement.
+     * @param phaseName the name of the phase during which this method is invoked.
      * @return a Transform object containing the scene transformation for logging.
      */
     public Transform addLogToAllMethods(String tagToLog, String phaseName) {
@@ -77,6 +79,7 @@ public class Instrumenter {
             }
         });
     }
+
 
     /**
      * Inserts a log statement at a specified location within a set of units in the body of a method.
