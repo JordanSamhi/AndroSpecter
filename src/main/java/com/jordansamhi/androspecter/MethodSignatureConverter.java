@@ -32,7 +32,7 @@ import java.util.List;
  * A utility class for converting Java method signatures to Soot method signatures, and extracting various components of
  * method signatures (class name, method name, return type, and parameter names).
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class MethodSignatureConverter {
 
@@ -49,46 +49,58 @@ public class MethodSignatureConverter {
     }
 
     /**
-     * Extracts the class name from a given method signature string.
+     * Extracts and returns the class name from a given Jimple signature.
+     * <p>
+     * The method assumes the class name is the first space-separated value in the signature,
+     * and it is surrounded by certain characters that are trimmed (first and last character of the string).
      *
-     * @param sig the method signature string from which to extract the class name
-     * @return the class name extracted from the given method signature string
+     * @param sig The Jimple signature as a string.
+     * @return The class name extracted from the Jimple signature.
      */
-    public String getClassNameFromSignature(String sig) {
+    public String getClassNameFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[0];
         return tmp.substring(1, tmp.length() - 1);
     }
 
+
     /**
-     * Extracts the method name from a given method signature string.
+     * Extracts and returns the method name from a given Jimple signature.
+     * <p>
+     * The method assumes the method name is the third space-separated value in the signature,
+     * and is located before the first opening parenthesis "(".
      *
-     * @param sig the method signature string from which to extract the method name
-     * @return the method name extracted from the given method signature string
+     * @param sig The Jimple signature as a string.
+     * @return The method name extracted from the Jimple signature.
      */
-    public String getMethodNameFromSignature(String sig) {
+    public String getMethodNameFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[2];
         return tmp.substring(0, tmp.indexOf("("));
     }
 
 
     /**
-     * Extracts the return type name from a given method signature string.
+     * Extracts and returns the return type from a given Jimple signature.
+     * <p>
+     * The method assumes the return type is the second space-separated value in the signature.
      *
-     * @param sig the method signature string from which to extract the return type name
-     * @return the return type name extracted from the given method signature string
+     * @param sig The Jimple signature as a string.
+     * @return The return type extracted from the Jimple signature.
      */
-    public String getReturnNameFromSignature(String sig) {
+    public String getReturnNameFromJimpleSignature(String sig) {
         return sig.split(" ")[1];
     }
 
 
     /**
-     * Extracts the names of the parameters from a given method signature string.
+     * Extracts and returns the list of parameter types from a given Jimple signature.
+     * <p>
+     * The method assumes the method signature, which includes parameter types, is the third space-separated value in the signature,
+     * and is located within the parentheses "()". If multiple parameters exist, they are expected to be comma-separated.
      *
-     * @param sig the method signature string from which to extract the parameter names
-     * @return a list of parameter names extracted from the given method signature string
+     * @param sig The Jimple signature as a string.
+     * @return A list of parameter types extracted from the Jimple signature. An empty list is returned if no parameters exist.
      */
-    public List<String> getParametersNamesFromSignature(String sig) {
+    public List<String> getParametersNamesFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[2];
         String params = tmp.substring(tmp.indexOf("(") + 1, tmp.indexOf(")"));
         String[] paramsArray = params.split(",");
@@ -102,6 +114,7 @@ public class MethodSignatureConverter {
         }
         return parameters;
     }
+
 
     /**
      * Converts a Java signature to a Soot signature.
