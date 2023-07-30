@@ -35,39 +35,46 @@ import java.util.Set;
 /**
  * Abstract class to load a file into memory and extract relevant items into a set.
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public abstract class FileLoader {
-	protected Set<String> items;
+    protected Set<String> items;
 
-	protected FileLoader() {
-		this.items = new HashSet<>();
-		this.loadFile(this.getFile());
-	}
+    protected FileLoader() {
+        this.items = new HashSet<>();
+        this.loadFile(this.getFile());
+    }
 
-	protected abstract String getFile();
+    /**
+     * Abstract method that should be implemented by subclasses to return the file path or name.
+     * <p>
+     * This is typically used to provide the location of a file relevant to the subclass's functionality.
+     *
+     * @return The file path or name as a String.
+     */
+    protected abstract String getFile();
 
-	/**
-	 * Loads a file into memory and extracts relevant items into a list.
-	 *
-	 * @param file the path to the file to load into memory
-	 */
-	protected void loadFile(String file) {
-		InputStream fis;
-		BufferedReader br;
-		String line;
-		try {
-			fis = this.getClass().getResourceAsStream(file);
-			br = new BufferedReader(new InputStreamReader(fis));
-			while ((line = br.readLine()) != null)   {
-				if(!line.startsWith("#") && !line.isEmpty()) {
-					this.items.add(line);
-				}
-			}
-			br.close();
-			fis.close();
-		} catch (IOException e) {
-			System.err.println(e.getMessage());
-		}
-	}
+    /**
+     * Loads a file into memory and extracts relevant items into a list.
+     *
+     * @param file the path to the file to load into memory
+     */
+    protected void loadFile(String file) {
+        InputStream fis;
+        BufferedReader br;
+        String line;
+        try {
+            fis = this.getClass().getResourceAsStream(file);
+            br = new BufferedReader(new InputStreamReader(fis));
+            while ((line = br.readLine()) != null) {
+                if (!line.startsWith("#") && !line.isEmpty()) {
+                    this.items.add(line);
+                }
+            }
+            br.close();
+            fis.close();
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
 }
