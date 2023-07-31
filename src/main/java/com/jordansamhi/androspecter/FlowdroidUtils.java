@@ -53,6 +53,7 @@ public class FlowdroidUtils {
     private ProcessManifest pm;
     private final String apkPath;
     private SetupApplication sa;
+    private InfoflowCFG icfg;
 
     public FlowdroidUtils(String apkPath) {
         this.apkPath = apkPath;
@@ -100,6 +101,7 @@ public class FlowdroidUtils {
         }
         sa.getConfig().setCallgraphAlgorithm(cgAlgo);
         sa.constructCallgraph();
+        this.icfg = new InfoflowCFG();
         if (useExistingInstance) {
             sa.getConfig().setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
         }
@@ -109,16 +111,16 @@ public class FlowdroidUtils {
 
     /**
      * Runs the taint analysis on the provided set of sources and sinks.
-     *
+     * <p>
      * The method throws a NullPointerException if the SetupApplication has not been initialized before calling this method.
      * It then runs the Infoflow analysis and stores the results in a set of strings where each string represents a leak path
      * from a source to a sink in the format:
      * "Found leak:
-     *   - From [source]
-     *     - Detailed path:
-     *        [statement] =&gt; in method: [method]
-     *   - To [sink]"
-     *
+     * - From [source]
+     * - Detailed path:
+     * [statement] =&gt; in method: [method]
+     * - To [sink]"
+     * <p>
      * If no flow is found, a warning message is printed.
      *
      * @param sources the set of sources to consider in the taint analysis
@@ -137,7 +139,6 @@ public class FlowdroidUtils {
         } catch (Exception e) {
 
         }
-        InfoflowCFG icfg = new InfoflowCFG();
         List<SootMethod> sourceList = null;
         Set<String> resultList = new HashSet<>();
         if (results != null) {
@@ -151,7 +152,7 @@ public class FlowdroidUtils {
                             resultBuilder.append("  - From ").append(source).append("\n");
                             resultBuilder.append("    - Detailed path:\n");
                             for (Stmt s : path) {
-                                resultBuilder.append("       ").append(s).append(" => in method: ").append(icfg.getMethodOf(s)).append("\n");
+                                resultBuilder.append("       ").append(s).append(" => in method: ").append(this.icfg.getMethodOf(s)).append("\n");
                             }
                             resultBuilder.append("  - To ").append(sink).append("\n");
                             resultList.add(resultBuilder.toString());
@@ -161,6 +162,8 @@ public class FlowdroidUtils {
             } else {
                 Writer.v().pwarning("No Flow found.");
             }
+        } else {
+            Writer.v().pwarning("No Flow found.");
         }
         return resultList;
     }
