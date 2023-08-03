@@ -95,8 +95,6 @@ public abstract class AndroidAppProcessor {
      * <p>
      * This method is expected to be implemented in any subclass of AndroidAppProcessor.
      * It defines the specific operations that should be performed on the results obtained from the processApp method.
-     *
-     * @param result The result of the processApp method.
      */
     protected abstract void processResults();
 
