@@ -3,7 +3,6 @@ package com.jordansamhi.androspecter;
 import com.jordansamhi.androspecter.config.SootConfig;
 import com.jordansamhi.androspecter.printers.Writer;
 import soot.G;
-import soot.SootMethod;
 import soot.jimple.Stmt;
 import soot.jimple.infoflow.InfoflowConfiguration;
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
@@ -16,7 +15,10 @@ import soot.jimple.infoflow.results.ResultSinkInfo;
 import soot.jimple.infoflow.results.ResultSourceInfo;
 import soot.jimple.infoflow.solver.cfg.InfoflowCFG;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /*-
  * #%L
@@ -68,19 +70,19 @@ public class FlowdroidUtils {
     /**
      * Initializes a Flowdroid analysis on an Android app.
      *
-     * @param platformPath        The path to the directory containing the Android platform.
-     * @param config              The configuration to be used for the analysis, or null to use default configuration.
-     * @param CallGraphAlgo       The algorithm to be used for constructing the call graph (CHA, RTA, VTA, or SPARK).
-     * @param useExistingInstance Whether to use an existing Soot instance.
+     * @param platformPath  The path to the directory containing the Android platform.
+     * @param config        The configuration to be used for the analysis, or null to use default configuration.
+     * @param CallGraphAlgo The algorithm to be used for constructing the call graph (CHA, RTA, VTA, or SPARK).
      * @return The SetupApplication object representing the analysis.
      */
-    public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String CallGraphAlgo, boolean useExistingInstance) {
+    public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String CallGraphAlgo) {
         G.reset();
         InfoflowAndroidConfiguration ifac = new InfoflowAndroidConfiguration();
         ifac.getAnalysisFileConfig().setAndroidPlatformDir(platformPath);
         ifac.getAnalysisFileConfig().setTargetAPKFile(this.apkPath);
         ifac.setMergeDexFiles(true);
         ifac.setCodeEliminationMode(InfoflowConfiguration.CodeEliminationMode.NoCodeElimination);
+        ifac.getPathConfiguration().setPathReconstructionMode(InfoflowConfiguration.PathReconstructionMode.Precise);
         SetupApplication sa = new SetupApplication(ifac);
         if (config == null) {
             sa.setSootConfig(new SootConfig());
@@ -101,10 +103,7 @@ public class FlowdroidUtils {
         }
         sa.getConfig().setCallgraphAlgorithm(cgAlgo);
         sa.constructCallgraph();
-        this.icfg = new InfoflowCFG();
-        if (useExistingInstance) {
-            sa.getConfig().setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
-        }
+        ifac.setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
         this.sa = sa;
         return sa;
     }
@@ -135,12 +134,12 @@ public class FlowdroidUtils {
         }
         InfoflowResults results = null;
         try {
-            results = sa.runInfoflow(sources, sinks);
+            results = this.sa.runInfoflow(sources, sinks);
         } catch (Exception e) {
 
         }
-        List<SootMethod> sourceList = null;
         Set<String> resultList = new HashSet<>();
+        this.icfg = new InfoflowCFG();
         if (results != null) {
             if (results.getResults() != null && !results.getResults().isEmpty()) {
                 for (ResultSinkInfo sink : results.getResults().keySet()) {
