@@ -2,6 +2,7 @@ package com.jordansamhi.androspecter;
 
 import com.jordansamhi.androspecter.network.RedisManager;
 import com.jordansamhi.androspecter.printers.Writer;
+
 import java.io.File;
 import java.util.concurrent.*;
 
@@ -90,6 +91,17 @@ public abstract class AndroidAppProcessor {
     protected abstract void processApp(String appName);
 
     /**
+     * Processes the results of the processApp method.
+     * <p>
+     * This method is expected to be implemented in any subclass of AndroidAppProcessor.
+     * It defines the specific operations that should be performed on the results obtained from the processApp method.
+     *
+     * @param result The result of the processApp method.
+     */
+    protected abstract void processResults();
+
+
+    /**
      * Begins the process of fetching, processing, and deleting Android apps.
      * <p>
      * This method retrieves the SHA256 of an Android app from a Redis manager,
@@ -132,6 +144,12 @@ public abstract class AndroidAppProcessor {
                 });
                 try {
                     String result = future.get(timeout, TimeUnit.MINUTES);
+                    if (result.equals("Task completed successfully")) {
+                        rm.sadd(redisSuccess, sha);
+                        this.processResults();
+                    } else {
+                        Writer.v().perror("Error in processing app");
+                    }
                 } catch (TimeoutException e) {
                     Writer.v().perror("Timeout reached");
                 } catch (ExecutionException e) {
