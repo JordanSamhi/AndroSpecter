@@ -39,7 +39,7 @@ import java.util.*;
  * Utility class for working with the Soot framework. Provides various helper methods for working with Soot classes,
  * methods, and call graphs.
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class SootUtils {
 
@@ -365,7 +365,6 @@ public class SootUtils {
      * @return a set of all Soot methods in the Scene.
      */
     public Set<SootMethod> getAllMethods() {
-        // If allMethods has not been computed yet, do it now.
         if (this.allMethods.isEmpty()) {
             for (SootClass sc : this.getClasses()) {
                 this.allMethods.addAll(sc.getMethods());
@@ -492,6 +491,31 @@ public class SootUtils {
         Options.v().set_include_all(true);
         Scene.v().loadNecessaryClasses();
     }
+
+    /**
+     * Gets the adjacency list representation of a given call graph.
+     *
+     * <p>This method iterates through the provided call graph, treating each edge as a directed connection
+     * from a source method to a target method. For each edge, the source method is used as a key in the
+     * adjacency list, with the corresponding value being a list of methods that the source method directly calls.
+     * If the source method is encountered for the first time, a new list is created and added to the adjacency
+     * list with the source method as the key. The target method is then added to the source method's list of called methods.</p>
+     *
+     * @param cg the CallGraph object to transform into an adjacency list
+     * @return a Map where each key is a SootMethod object representing a source method and each value is a List of SootMethod
+     * objects representing the methods directly called by the source method
+     */
+    public Map<SootMethod, List<SootMethod>> getCallGraphAdjacencyList(CallGraph cg) {
+        Map<SootMethod, List<SootMethod>> adjacencyList = new HashMap<>();
+        for (Edge e : cg) {
+            SootMethod srcMethod = e.src();
+            SootMethod tgtMethod = e.tgt();
+            adjacencyList.putIfAbsent(srcMethod, new ArrayList<>());
+            adjacencyList.get(srcMethod).add(tgtMethod);
+        }
+        return adjacencyList;
+    }
+
 
     /**
      * Sets up Soot with the specified output directory.
