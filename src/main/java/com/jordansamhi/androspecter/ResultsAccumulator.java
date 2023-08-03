@@ -6,7 +6,7 @@ import java.util.StringJoiner;
 /**
  * Singleton class that accumulates results metrics.
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class ResultsAccumulator {
 
@@ -81,6 +81,17 @@ public class ResultsAccumulator {
     public int getMetric(String metric) {
         return metrics.getOrDefault(metric, 0);
     }
+
+    /**
+     * Method to set a specific metric to a certain value.
+     *
+     * @param metric the metric to set
+     * @param value  the value to set
+     */
+    public void setMetric(String metric, int value) {
+        metrics.put(metric, value);
+    }
+
 
     /**
      * Method to print all the metrics in a vector form.
