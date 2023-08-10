@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.jordansamhi</groupId>
     <artifactId>androspecter</artifactId>
-    <version>1.0.7</version>
+    <version>1.0.8</version>
     <name>AndroSpecter</name>
     <description>Useful classes and methods</description>
     <url>https://github.com/JordanSamhi/AndroSpecter</url>
