@@ -2,6 +2,7 @@ package com.jordansamhi.androspecter.network;
 
 import redis.clients.jedis.Jedis;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /*-
@@ -171,5 +172,41 @@ public class RedisManager {
      */
     public long del(String... keys) {
         return this.jedis.del(keys);
+    }
+
+    /**
+     * Sends a byte array to a Redis list using the connection established by this RedisManager.
+     *
+     * @param list the name of the Redis list to which to send the byte array
+     * @param val  the byte array to send to the Redis list
+     */
+    public void lpush(String list, byte[] val) {
+        this.jedis.select(0);
+        this.jedis.lpush(list.getBytes(StandardCharsets.UTF_8), val);
+    }
+
+    /**
+     * Adds a byte array to a Redis set using the connection established by this RedisManager.
+     * <p>
+     * If the specified set does not exist, a new set is created and the byte array is added to it.
+     * If the set already exists and contains the specified byte array, the command has no effect.
+     * Note that the set is not ordered and each byte array in a set is unique.
+     *
+     * @param set the name of the Redis set to which to add the byte array
+     * @param val the byte array to add to the Redis set
+     */
+    public void sadd(String set, byte[] val) {
+        this.jedis.select(0);
+        this.jedis.sadd(set.getBytes(StandardCharsets.UTF_8), val);
+    }
+
+    /**
+     * Sets the specified key to the specified byte array.
+     *
+     * @param key   the key
+     * @param value the byte array
+     */
+    public void set(String key, byte[] value) {
+        this.jedis.set(key.getBytes(StandardCharsets.UTF_8), value);
     }
 }
