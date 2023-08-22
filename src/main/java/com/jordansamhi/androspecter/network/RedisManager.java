@@ -43,13 +43,18 @@ public class RedisManager {
     /**
      * Constructs a new RedisManager object and connects to the specified Redis server using the given connection parameters.
      *
-     * @param server the server name or IP address of the Redis server
-     * @param port   the port number on which the Redis server is listening
-     * @param auth   the authentication password for the Redis server (may be null if authentication is not required)
+     * @param server the server name or IP address of the Redis server; must not be null
+     * @param port   the port number on which the Redis server is listening; must not be null
+     * @param auth   the authentication password for the Redis server; may be null or empty if authentication is not required
      */
     public RedisManager(String server, String port, String auth) {
+        if (server == null || port == null) {
+            throw new IllegalArgumentException("Server and port must not be null");
+        }
         this.jedis = new Jedis(String.format("redis://%s:%s", server, port));
-        this.jedis.auth(auth);
+        if (auth != null && !auth.isEmpty()) {
+            this.jedis.auth(auth);
+        }
         this.jedis.connect();
     }
 
