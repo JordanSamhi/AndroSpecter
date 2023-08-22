@@ -1,3 +1,7 @@
+<p align="center">
+<img width="1200px" src="https://github.com/JordanSamhi/AndroSpecter/blob/main/data/androspecter_logo.png">
+</p> 
+
 # AndroSpecter Library
 
 Welcome to **AndroSpecter**, your one-stop solution to facilitate the static analysis of Java programs and Android apps! 🚀
