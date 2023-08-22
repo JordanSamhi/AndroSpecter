@@ -59,7 +59,7 @@ public class MethodSignatureConverter {
      */
     public String getClassNameFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[0];
-        return tmp.substring(1, tmp.length() - 1);
+        return tmp.substring(1, tmp.length());
     }
 
 
