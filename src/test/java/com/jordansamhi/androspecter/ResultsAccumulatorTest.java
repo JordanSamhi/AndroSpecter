@@ -1,15 +1,11 @@
 package com.jordansamhi.androspecter;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-public class ResultsAccumulatorTest {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
-    @BeforeEach
-    public void setUp() {
-        ResultsAccumulator.instance = null; // Resetting the singleton instance for each test
-    }
+public class ResultsAccumulatorTest {
 
     @Test
     public void testSingletonInstance() {
