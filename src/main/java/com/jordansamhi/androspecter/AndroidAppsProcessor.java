@@ -22,7 +22,7 @@ import java.util.concurrent.*;
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
-public abstract class AndroidAppProcessor {
+public abstract class AndroidAppsProcessor {
 
     /**
      * The root key used in Redis to store and retrieve information related to the processing of Android apps.
@@ -69,7 +69,7 @@ public abstract class AndroidAppProcessor {
      * @param timeout   the maximum number of minutes that the processApp method is allowed to run for each Android app.
      */
 
-    public AndroidAppProcessor(RedisManager rm, AndroZooUtils au, String redisRoot, int timeout) {
+    public AndroidAppsProcessor(RedisManager rm, AndroZooUtils au, String redisRoot, int timeout) {
         this.rm = rm;
         this.redisRoot = redisRoot;
         this.timeout = timeout;
