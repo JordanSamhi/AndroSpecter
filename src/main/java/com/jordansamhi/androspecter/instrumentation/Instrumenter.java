@@ -1,6 +1,7 @@
 package com.jordansamhi.androspecter.instrumentation;
 
 import com.jordansamhi.androspecter.SootUtils;
+import com.jordansamhi.androspecter.printers.Writer;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /*-
  * #%L
@@ -39,9 +41,11 @@ import java.util.Map;
 /**
  * Singleton class for instrumenting SootMethods
  *
- * @author Jordan Samhi
+ * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class Instrumenter {
+
+    private SootUtils su;
 
     private static Instrumenter instance;
 
@@ -49,6 +53,7 @@ public class Instrumenter {
      * Private constructor to prevent external instantiation.
      */
     private Instrumenter() {
+        su = new SootUtils();
     }
 
     /**
@@ -64,22 +69,19 @@ public class Instrumenter {
     }
 
     /**
-     * Adds a log statement to all methods of application classes. Returns a Transform object which encapsulates
-     * the added transformation for the specified phase.
+     * Adds a transformation to the Jimple Transformation Pack (jtp) for a specific phase.
      *
-     * @param tagToLog  the tag to be used in the log statement.
-     * @param phaseName the name of the phase during which this method is invoked.
-     * @return a Transform object containing the scene transformation for logging.
+     * @param phaseName The name of the phase during which this transformation should be applied.
+     * @param logic     The logic to execute during the transformation, encapsulated as a Consumer of Body.
      */
-    public Transform addLogToAllMethods(String tagToLog, String phaseName) {
-        return new Transform(phaseName, new BodyTransformer() {
+    private void addTransformation(String phaseName, Consumer<Body> logic) {
+        PackManager.v().getPack("jtp").add(new Transform(phaseName, new BodyTransformer() {
+            @Override
             protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
-                SootMethod sm = b.getMethod();
-                addLogToMethod(sm, tagToLog, sm.getSignature());
+                logic.accept(b);
             }
-        });
+        }));
     }
-
 
     /**
      * Inserts a log statement at a specified location within a set of units in the body of a method.
@@ -91,8 +93,7 @@ public class Instrumenter {
      * @param b              The body of the method where the log statement is to be inserted.
      */
     public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b) {
-        SootUtils su = new SootUtils();
-        SootMethodRef logMethodRef = su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
+        SootMethodRef logMethodRef = this.su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
         List<Unit> unitsToAdd = new ArrayList<>();
         List<Value> params = new ArrayList<>();
         Value tag = StringConstant.v(tagToLog);
@@ -103,34 +104,6 @@ public class Instrumenter {
         unitsToAdd.add(newUnit);
         units.insertBefore(unitsToAdd, insertionPoint);
         b.validate();
-    }
-
-    /**
-     * Modifies all method calls within a body to include a log statement that logs the signature of the calling and called method.
-     * The log statement is inserted as the first instruction of each method invocation.
-     *
-     * @param tagToLog The tag to be used in the log statements.
-     * @return A Transform object that represents the modified method body.
-     */
-    public Transform addLogToAllMethodCalls(String tagToLog, String phaseName) {
-        return new Transform(phaseName, new BodyTransformer() {
-            protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
-                Chain<Unit> units = b.getUnits();
-                Map<Unit, String> insertionPointsToMessage = new HashMap<>();
-                for (Unit u : units) {
-                    Stmt stmt = (Stmt) u;
-                    InvokeExpr ie;
-                    if (stmt.containsInvokeExpr()) {
-                        ie = stmt.getInvokeExpr();
-                        String messageToLog = String.format("%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
-                        insertionPointsToMessage.put(u, messageToLog);
-                    }
-                }
-                for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
-                    addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b);
-                }
-            }
-        });
     }
 
     /**
@@ -149,5 +122,115 @@ public class Instrumenter {
             Unit entrypoint = jb.getFirstNonIdentityStmt();
             addLogStatement(units, entrypoint, tagToLog, messageToLog, b);
         }
+    }
+
+    /**
+     * Adds a log statement to all methods within the scope of the application classes.
+     *
+     * @param tagToLog  The logging tag that will be used in the added log statements.
+     * @param phaseName The name of the Soot phase during which this transformation is to be applied.
+     */
+    public void logAllMethods(String tagToLog, String phaseName) {
+        addTransformation(phaseName, b -> {
+            SootMethod sm = b.getMethod();
+            addLogToMethod(sm, tagToLog, sm.getSignature());
+        });
+    }
+
+    /**
+     * Modifies all method calls within a body to include a log statement that logs the signature of the calling and called method.
+     * The log statement is inserted as the first instruction of each method invocation.
+     * Example of log added to method a() that calls method b(): a()-->b()
+     *
+     * @param tagToLog  The tag to be used in the log statements.
+     * @param phaseName The phase during which this method is invoked.
+     */
+    public void logAllMethodCalls(String tagToLog, String phaseName) {
+        addTransformation(phaseName, b -> {
+            Chain<Unit> units = b.getUnits();
+            Map<Unit, String> insertionPointsToMessage = new HashMap<>();
+            for (Unit u : units) {
+                Stmt stmt = (Stmt) u;
+                InvokeExpr ie;
+                if (stmt.containsInvokeExpr()) {
+                    ie = stmt.getInvokeExpr();
+                    String messageToLog = String.format("%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
+                    insertionPointsToMessage.put(u, messageToLog);
+                }
+            }
+            for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
+                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b);
+            }
+        });
+    }
+
+    /**
+     * Internal method to log Android components based on given parameters.
+     *
+     * @param tagToLog        Tag to log in the log statement.
+     * @param phaseName       Phase during which this method is invoked.
+     * @param componentType   Type of the Android component (Activity, Service, etc.).
+     * @param methodSignature Signature of the method in the component.
+     * @param logMessage      Message to log when conditions are met.
+     */
+    private void logAndroidComponent(String tagToLog, String phaseName, String componentType,
+                                     String methodSignature, String logMessage) {
+        addTransformation(phaseName, b -> {
+            SootMethod sm = b.getMethod();
+            SootClass sc = sm.getDeclaringClass();
+            String actualComponentType = su.getComponentType(sc);
+            if (actualComponentType.equals(componentType) && sm.getSubSignature().equals(methodSignature)) {
+                addLogToMethod(sm, tagToLog, logMessage);
+            }
+        });
+    }
+
+    /**
+     * Registers a log statement to be inserted into Android Activities' {@code onCreate} methods.
+     *
+     * @param tagToLog  Logging tag.
+     * @param phaseName Soot phase name for the transformation.
+     */
+    public void logActivities(String tagToLog, String phaseName) {
+        logAndroidComponent(tagToLog, phaseName, Constants.ACTIVITY, Constants.ONCREATE_ACTIVITY, "ACTIVITY_EXECUTED");
+    }
+
+    /**
+     * Registers a log statement to be inserted into Android Services' {@code onCreate} methods.
+     *
+     * @param tagToLog  Logging tag.
+     * @param phaseName Soot phase name for the transformation.
+     */
+    public void logServices(String tagToLog, String phaseName) {
+        logAndroidComponent(tagToLog, phaseName, Constants.SERVICE, Constants.ONCREATE_SERVICE, "SERVICE_EXECUTED");
+    }
+
+    /**
+     * Logs execution of Broadcast Receivers within a given phase.
+     *
+     * @param tagToLog  The tag to be used in the log statement.
+     * @param phaseName The phase during which this method is invoked.
+     */
+    public void logBroadcastReceivers(String tagToLog, String phaseName) {
+        logAndroidComponent(tagToLog, phaseName, Constants.BROADCAST_RECEIVER, Constants.ONRECEIVE, "BROADCAST_RECEIVER_EXECUTED");
+    }
+
+    /**
+     * Logs execution of Content Providers within a given phase.
+     *
+     * @param tagToLog  The tag to be used in the log statement.
+     * @param phaseName The phase during which this method is invoked.
+     */
+    public void logContentProviders(String tagToLog, String phaseName) {
+        logAndroidComponent(tagToLog, phaseName, Constants.CONTENT_PROVIDER, Constants.ONCREATE_CONTENT_PROVIDER, "CONTENT_PROVIDER_EXECUTED");
+    }
+
+    /**
+     * Executes the Soot packs to perform code instrumentation.
+     */
+    public void instrument() {
+        Writer.v().pinfo("Instrumenting...");
+        PackManager.v().runPacks();
+        Writer.v().psuccess("Instrumentation done.");
     }
 }
