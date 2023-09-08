@@ -4,6 +4,7 @@ import redis.clients.jedis.Jedis;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 /*-
  * #%L
@@ -213,5 +214,15 @@ public class RedisManager {
      */
     public void set(String key, byte[] value) {
         this.jedis.set(key.getBytes(StandardCharsets.UTF_8), value);
+    }
+
+    /**
+     * Gets a set of elements from a Redis set.
+     *
+     * @param set the name of the Redis set
+     * @return a Set of elements in the specified set
+     */
+    public Set<String> smembers(String set) {
+        return this.jedis.smembers(set);
     }
 }
