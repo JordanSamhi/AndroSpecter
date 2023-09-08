@@ -58,6 +58,8 @@ public class Constants {
     public static final String ONCREATE_SERVICE = "void onCreate()";
     public static final String ONRECEIVE = "onReceive(android.content.Context,android.content.Intent)";
     public static final String ONCREATE_CONTENT_PROVIDER = "boolean onCreate()";
+    public static final String INIT = "void <init>()";
+    public static final String CLINIT = "void <clinit>()";
 
     /**
      * Misc
