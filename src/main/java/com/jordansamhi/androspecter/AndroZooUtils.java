@@ -88,6 +88,7 @@ public class AndroZooUtils {
                     Writer.v().perror(String.format("Cannot write file in %s", this.path));
                     return null;
                 }
+                //TODO: Check if file exists
                 FileOutputStream outputStream = new FileOutputStream(filePath);
                 byte[] buffer = new byte[4096];
                 int bytesRead;
