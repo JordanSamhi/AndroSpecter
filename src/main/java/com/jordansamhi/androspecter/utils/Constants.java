@@ -49,6 +49,7 @@ public class Constants {
     public static final String ANDROID_CONTENT_CONTENTPROVIDER = "android.content.ContentProvider";
     public static final String DUMMYMAINCLASS = "dummyMainClass";
     public static final String ANDROID_UTIL_LOG = "android.util.Log";
+    public static final String JAVA_LANG_VOID = "java.lang.Void";
 
     /**
      * Methods
