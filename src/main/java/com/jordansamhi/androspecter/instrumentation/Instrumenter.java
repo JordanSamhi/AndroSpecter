@@ -1,10 +1,10 @@
 package com.jordansamhi.androspecter.instrumentation;
 
 import com.jordansamhi.androspecter.SootUtils;
-import com.jordansamhi.androspecter.printers.Writer;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
+import soot.options.Options;
 import soot.util.Chain;
 
 import java.util.ArrayList;
@@ -45,7 +45,7 @@ import java.util.function.Consumer;
  */
 public class Instrumenter {
 
-    private SootUtils su;
+    private final SootUtils su;
 
     private static Instrumenter instance;
 
@@ -91,8 +91,9 @@ public class Instrumenter {
      * @param tagToLog       The tag to be used in the log statement.
      * @param messageToLog   The message to be logged.
      * @param b              The body of the method where the log statement is to be inserted.
+     * @param after          Whether inserting the log statement after the insertionPoint
      */
-    public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b) {
+    public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
         SootMethodRef logMethodRef = this.su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
         List<Unit> unitsToAdd = new ArrayList<>();
         List<Value> params = new ArrayList<>();
@@ -102,8 +103,47 @@ public class Instrumenter {
         params.add(message);
         Unit newUnit = Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(logMethodRef, params));
         unitsToAdd.add(newUnit);
-        units.insertBefore(unitsToAdd, insertionPoint);
+        if (after) {
+            units.insertAfter(unitsToAdd, insertionPoint);
+        } else {
+            units.insertBefore(unitsToAdd, insertionPoint);
+        }
+
+        // Not sure why but some methods with return type set as "void"
+        // do not have a return statement in Jimple, probably a bug in Soot
+        this.patchReturnStatement(b.getMethod().getReturnType(), units);
+
         b.validate();
+    }
+
+    /**
+     * Adds a return statement to a list of units based on the return type.
+     *
+     * @param returnType The return type of the method.
+     * @param units      The list of units to which a return statement is added.
+     */
+    private void patchReturnStatement(Type returnType, Chain<Unit> units) {
+        boolean hasRet = false;
+        Unit newStmt = null;
+        Type voidType = RefType.v(Constants.JAVA_LANG_VOID);
+
+        if (returnType instanceof VoidType) {
+            hasRet = units.stream().anyMatch(u -> u instanceof ReturnVoidStmt);
+            if (!hasRet) {
+                newStmt = Jimple.v().newReturnVoidStmt();
+            }
+        } else if (returnType instanceof RefType && returnType.equals(voidType)) {
+            hasRet = units.stream().anyMatch(u -> u instanceof ReturnStmt);
+            if (!hasRet) {
+                newStmt = Jimple.v().newReturnStmt(NullConstant.v());
+            }
+        }
+
+        if (newStmt != null) {
+            List<Unit> toAdd = new ArrayList<>();
+            toAdd.add(newStmt);
+            units.insertAfter(toAdd, units.getLast());
+        }
     }
 
     /**
@@ -115,25 +155,42 @@ public class Instrumenter {
      * @param messageToLog The message to be logged.
      */
     public void addLogToMethod(SootMethod sm, String tagToLog, String messageToLog) {
-        if (sm.isConcrete()) {
-            Body b = sm.retrieveActiveBody();
-            JimpleBody jb = (JimpleBody) b;
-            Chain<Unit> units = b.getUnits();
-            Unit entrypoint = jb.getFirstNonIdentityStmt();
-            addLogStatement(units, entrypoint, tagToLog, messageToLog, b);
+        if (sm != null) {
+            if (sm.isConcrete()) {
+                Body b = sm.retrieveActiveBody();
+                JimpleBody jb = (JimpleBody) b;
+                Chain<Unit> units = b.getUnits();
+                Unit entrypoint = jb.getFirstNonIdentityStmt();
+                addLogStatement(units, entrypoint, tagToLog, messageToLog, b, false);
+            }
         }
     }
 
     /**
      * Adds a log statement to all methods within the scope of the application classes.
      *
-     * @param tagToLog  The logging tag that will be used in the added log statements.
-     * @param phaseName The name of the Soot phase during which this transformation is to be applied.
+     * @param tagToLog The logging tag that will be used in the added log statements.
      */
-    public void logAllMethods(String tagToLog, String phaseName) {
-        addTransformation(phaseName, b -> {
+    public void logAllMethods(String tagToLog) {
+        addTransformation("jtp.methodsLogger", b -> {
             SootMethod sm = b.getMethod();
-            addLogToMethod(sm, tagToLog, sm.getSignature());
+            addLogToMethod(sm, tagToLog, String.format("METHOD=%s", sm.getSignature()));
+        });
+    }
+
+    /**
+     * Adds a log statement to all class constructors and static initializers within the scope of the application classes.
+     * The log statement will log the signature of the class constructor or static initializer.
+     *
+     * @param tagToLog The logging tag that will be used in the added log statements.
+     */
+    public void logAllClasses(String tagToLog) {
+        addTransformation("jtp.classesLogger", b -> {
+            SootMethod sm = b.getMethod();
+            String subsig = sm.getSubSignature();
+            if (subsig.equals(Constants.INIT) || subsig.equals(Constants.CLINIT)) {
+                addLogToMethod(sm, tagToLog, String.format("CLASS=%s", sm.getDeclaringClass().getName()));
+            }
         });
     }
 
@@ -142,11 +199,10 @@ public class Instrumenter {
      * The log statement is inserted as the first instruction of each method invocation.
      * Example of log added to method a() that calls method b(): a()-->b()
      *
-     * @param tagToLog  The tag to be used in the log statements.
-     * @param phaseName The phase during which this method is invoked.
+     * @param tagToLog The tag to be used in the log statements.
      */
-    public void logAllMethodCalls(String tagToLog, String phaseName) {
-        addTransformation(phaseName, b -> {
+    public void logAllMethodCalls(String tagToLog) {
+        addTransformation("jtp.methodCallsLogger", b -> {
             Chain<Unit> units = b.getUnits();
             Map<Unit, String> insertionPointsToMessage = new HashMap<>();
             for (Unit u : units) {
@@ -154,12 +210,12 @@ public class Instrumenter {
                 InvokeExpr ie;
                 if (stmt.containsInvokeExpr()) {
                     ie = stmt.getInvokeExpr();
-                    String messageToLog = String.format("%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
+                    String messageToLog = String.format("CALL=%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
                     insertionPointsToMessage.put(u, messageToLog);
                 }
             }
             for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
-                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b);
+                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
             }
         });
     }
@@ -171,16 +227,15 @@ public class Instrumenter {
      * @param phaseName       Phase during which this method is invoked.
      * @param componentType   Type of the Android component (Activity, Service, etc.).
      * @param methodSignature Signature of the method in the component.
-     * @param logMessage      Message to log when conditions are met.
      */
     private void logAndroidComponent(String tagToLog, String phaseName, String componentType,
-                                     String methodSignature, String logMessage) {
+                                     String methodSignature) {
         addTransformation(phaseName, b -> {
             SootMethod sm = b.getMethod();
             SootClass sc = sm.getDeclaringClass();
             String actualComponentType = su.getComponentType(sc);
             if (actualComponentType.equals(componentType) && sm.getSubSignature().equals(methodSignature)) {
-                addLogToMethod(sm, tagToLog, logMessage);
+                addLogToMethod(sm, tagToLog, String.format("%s=%s", componentType.toUpperCase(), sc.getName()));
             }
         });
     }
@@ -188,49 +243,86 @@ public class Instrumenter {
     /**
      * Registers a log statement to be inserted into Android Activities' {@code onCreate} methods.
      *
-     * @param tagToLog  Logging tag.
-     * @param phaseName Soot phase name for the transformation.
+     * @param tagToLog Logging tag.
      */
-    public void logActivities(String tagToLog, String phaseName) {
-        logAndroidComponent(tagToLog, phaseName, Constants.ACTIVITY, Constants.ONCREATE_ACTIVITY, "ACTIVITY_EXECUTED");
+    public void logActivities(String tagToLog) {
+        logAndroidComponent(tagToLog, "jtp.activitiesLogger", Constants.ACTIVITY, Constants.ONCREATE_ACTIVITY);
     }
 
     /**
      * Registers a log statement to be inserted into Android Services' {@code onCreate} methods.
      *
-     * @param tagToLog  Logging tag.
-     * @param phaseName Soot phase name for the transformation.
+     * @param tagToLog Logging tag.
      */
-    public void logServices(String tagToLog, String phaseName) {
-        logAndroidComponent(tagToLog, phaseName, Constants.SERVICE, Constants.ONCREATE_SERVICE, "SERVICE_EXECUTED");
+    public void logServices(String tagToLog) {
+        logAndroidComponent(tagToLog, "jtp.servicesLogger", Constants.SERVICE, Constants.ONCREATE_SERVICE);
     }
 
     /**
      * Logs execution of Broadcast Receivers within a given phase.
      *
-     * @param tagToLog  The tag to be used in the log statement.
-     * @param phaseName The phase during which this method is invoked.
+     * @param tagToLog The tag to be used in the log statement.
      */
-    public void logBroadcastReceivers(String tagToLog, String phaseName) {
-        logAndroidComponent(tagToLog, phaseName, Constants.BROADCAST_RECEIVER, Constants.ONRECEIVE, "BROADCAST_RECEIVER_EXECUTED");
+    public void logBroadcastReceivers(String tagToLog) {
+        logAndroidComponent(tagToLog, "jtp.broadcastReceiversLogger", Constants.BROADCAST_RECEIVER, Constants.ONRECEIVE);
     }
 
     /**
      * Logs execution of Content Providers within a given phase.
      *
-     * @param tagToLog  The tag to be used in the log statement.
-     * @param phaseName The phase during which this method is invoked.
+     * @param tagToLog The tag to be used in the log statement.
      */
-    public void logContentProviders(String tagToLog, String phaseName) {
-        logAndroidComponent(tagToLog, phaseName, Constants.CONTENT_PROVIDER, Constants.ONCREATE_CONTENT_PROVIDER, "CONTENT_PROVIDER_EXECUTED");
+    public void logContentProviders(String tagToLog) {
+        logAndroidComponent(tagToLog, "jtp.contentProvidersLogger", Constants.CONTENT_PROVIDER, Constants.ONCREATE_CONTENT_PROVIDER);
+    }
+
+    /**
+     * Logs all executable statements in the code.
+     *
+     * @param tagToLog The tag to be used in the log statement.
+     */
+    public void logAllStatements(String tagToLog) {
+        addTransformation("jtp.statementsLogger", b -> {
+            Chain<Unit> units = b.getUnits();
+            Map<Unit, String> insertionPointsToMessage = new HashMap<>();
+            for (Unit u : units) {
+                Stmt stmt = (Stmt) u;
+                if (!(stmt instanceof IdentityStmt)) {
+                    String messageToLog = String.format("STATEMENT=%s|%s", b.getMethod(), stmt);
+                    insertionPointsToMessage.put(u, messageToLog);
+                }
+            }
+            for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
+                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, true);
+            }
+        });
     }
 
     /**
      * Executes the Soot packs to perform code instrumentation.
      */
     public void instrument() {
-        Writer.v().pinfo("Instrumenting...");
         PackManager.v().runPacks();
-        Writer.v().psuccess("Instrumentation done.");
+    }
+
+    /**
+     * Exports the modified APK with default settings specified
+     * when loading the app into soot with set_output_format and set_output_dir
+     */
+    public void exportNewApk() {
+        //TODO: check file existence
+        PackManager.v().writeOutput();
+    }
+
+    /**
+     * Exports the modified APK to a specified path.
+     *
+     * @param path The directory path where the APK will be exported.
+     */
+    public void exportNewApk(String path) {
+        //TODO: check file existence
+        Options.v().set_output_format(Options.output_format_dex);
+        Options.v().set_output_dir(path);
+        PackManager.v().writeOutput();
     }
 }
