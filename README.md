@@ -17,7 +17,7 @@ You can use **AndroSpecter** in your Maven project by adding the following depen
 ```xml
 <dependency>
     <groupId>com.jordansamhi</groupId>
-    <artifactId>AndroSpecter</artifactId>
+    <artifactId>androspecter</artifactId>
     <version>1.X.Y</version>
 </dependency>
 ```
