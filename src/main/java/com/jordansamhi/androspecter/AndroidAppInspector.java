@@ -18,23 +18,26 @@ public abstract class AndroidAppInspector {
     /**
      * Examines the specified SootClass.
      *
-     * @param sc the SootClass to be examined.
+     * @param sc The SootClass to be examined.
      */
     public abstract void examineClass(SootClass sc);
 
     /**
-     * Examines the specified SootMethod.
+     * Examines the specified SootMethod within a SootClass.
      *
-     * @param sm the SootMethod to be examined.
+     * @param sc The SootClass containing the SootMethod.
+     * @param sm The SootMethod to be examined.
      */
-    public abstract void examineMethod(SootMethod sm);
+    public abstract void examineMethod(SootClass sc, SootMethod sm);
 
     /**
-     * Examines the specified statement (Unit).
+     * Examines the specified statement (Unit) within a SootMethod of a SootClass.
      *
-     * @param u the statement (Unit) to be examined.
+     * @param sc The SootClass containing the SootMethod.
+     * @param sm The SootMethod containing the statement (Unit).
+     * @param u  The statement (Unit) to be examined.
      */
-    public abstract void examineStatement(Unit u);
+    public abstract void examineStatement(SootClass sc, SootMethod sm, Unit u);
 
     /**
      * Sets the criteria for examination.
@@ -68,34 +71,37 @@ public abstract class AndroidAppInspector {
             examineClass(sc);
         }
         for (SootMethod sm : sc.getMethods()) {
-            processMethod(sm);
+            processMethod(sc, sm);
         }
     }
 
     /**
      * Processes a SootMethod, examining it and its statements as per the criteria.
      *
+     * @param sc The SootClass containing the SootMethod.
      * @param sm The SootMethod to process.
      */
-    private void processMethod(SootMethod sm) {
+    private void processMethod(SootClass sc, SootMethod sm) {
         if (examineMethods) {
-            examineMethod(sm);
+            examineMethod(sc, sm);
         }
         if (sm.isConcrete()) {
-            processStatements(sm.retrieveActiveBody());
+            processStatements(sc, sm, sm.retrieveActiveBody());
         }
     }
 
     /**
      * Processes the statements of a method body as per the criteria.
      *
+     * @param sc   The SootClass containing the SootMethod.
+     * @param sm   The SootMethod containing the Body.
      * @param body The Body containing the statements to process.
      */
-    private void processStatements(Body body) {
+    private void processStatements(SootClass sc, SootMethod sm, Body body) {
         Chain<Unit> units = body.getUnits();
         for (Unit u : units) {
             if (examineStatements) {
-                examineStatement(u);
+                examineStatement(sc, sm, u);
             }
         }
     }
