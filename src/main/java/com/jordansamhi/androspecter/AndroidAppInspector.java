@@ -54,50 +54,49 @@ public abstract class AndroidAppInspector {
      */
     public void run() {
         for (SootClass sc : Scene.v().getClasses()) {
-            if (!examineClasses || !shouldExamineClass(sc)) continue;
-            this.examineClass(sc);
-            for (SootMethod sm : sc.getMethods()) {
-                if (!examineMethods || !shouldExamineMethod(sm)) continue;
-                this.examineMethod(sm);
-                if (sm.isConcrete()) {
-                    Body b = sm.retrieveActiveBody();
-                    Chain<Unit> units = b.getUnits();
-                    for (Unit u : units) {
-                        if (!examineStatements || !shouldExamineStatement(u)) continue;
-                        this.examineStatement(u);
-                    }
-                }
-            }
+            processClass(sc);
         }
     }
 
     /**
-     * Optional filter to decide whether to examine a class.
+     * Processes a SootClass, examining it and its methods and statements as per the criteria.
      *
-     * @param sc the SootClass to check.
-     * @return true if the class should be examined, false otherwise.
+     * @param sc The SootClass to process.
      */
-    protected boolean shouldExamineClass(SootClass sc) {
-        return true;
+    private void processClass(SootClass sc) {
+        if (examineClasses) {
+            examineClass(sc);
+        }
+        for (SootMethod sm : sc.getMethods()) {
+            processMethod(sm);
+        }
     }
 
     /**
-     * Optional filter to decide whether to examine a method.
+     * Processes a SootMethod, examining it and its statements as per the criteria.
      *
-     * @param sm the SootMethod to check.
-     * @return true if the method should be examined, false otherwise.
+     * @param sm The SootMethod to process.
      */
-    protected boolean shouldExamineMethod(SootMethod sm) {
-        return true;
+    private void processMethod(SootMethod sm) {
+        if (examineMethods) {
+            examineMethod(sm);
+        }
+        if (sm.isConcrete()) {
+            processStatements(sm.retrieveActiveBody());
+        }
     }
 
     /**
-     * Optional filter to decide whether to examine a statement.
+     * Processes the statements of a method body as per the criteria.
      *
-     * @param u the statement (Unit) to check.
-     * @return true if the statement should be examined, false otherwise.
+     * @param body The Body containing the statements to process.
      */
-    protected boolean shouldExamineStatement(Unit u) {
-        return true;
+    private void processStatements(Body body) {
+        Chain<Unit> units = body.getUnits();
+        for (Unit u : units) {
+            if (examineStatements) {
+                examineStatement(u);
+            }
+        }
     }
 }
