@@ -1,4 +1,4 @@
-package com.jordansamhi.androspecter.commonlineoptions;
+package com.jordansamhi.androspecter.commandlineoptions;
 
 import com.jordansamhi.androspecter.printers.Writer;
 import org.apache.commons.cli.*;

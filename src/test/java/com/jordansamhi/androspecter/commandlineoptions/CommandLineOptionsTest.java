@@ -1,4 +1,4 @@
-package com.jordansamhi.androspecter.commonlineoptions;
+package com.jordansamhi.androspecter.commandlineoptions;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

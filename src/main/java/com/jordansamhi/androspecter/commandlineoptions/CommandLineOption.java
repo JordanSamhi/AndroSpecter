@@ -1,4 +1,4 @@
-package com.jordansamhi.androspecter.commonlineoptions;
+package com.jordansamhi.androspecter.commandlineoptions;
 
 /*-
  * #%L
