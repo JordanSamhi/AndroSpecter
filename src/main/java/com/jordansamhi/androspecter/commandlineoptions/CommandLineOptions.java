@@ -168,6 +168,16 @@ public class CommandLineOptions {
     }
 
     /**
+     * Returns whether an option is set.
+     *
+     * @param shortOpt The short form of the option.
+     * @return Whether the option is set or not.
+     */
+    public boolean hasOption(String shortOpt) {
+        return cmdLine.hasOption(shortOpt);
+    }
+
+    /**
      * Returns the application name.
      *
      * @return The application name.
