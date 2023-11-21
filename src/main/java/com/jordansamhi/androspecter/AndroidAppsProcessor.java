@@ -116,6 +116,7 @@ public abstract class AndroidAppsProcessor {
     public void run() {
         String redisSpop = String.format("%s:pop", this.redisRoot);
         String redisSuccess = String.format("%s:success", this.redisRoot);
+        String redisErrors = String.format("%s:errors", this.redisRoot);
 
         try {
             while (true) {
@@ -146,11 +147,14 @@ public abstract class AndroidAppsProcessor {
                         rm.sadd(redisSuccess, sha);
                         this.processResults();
                     } else {
+                        rm.sadd(redisErrors, sha);
                         Writer.v().perror("Error in processing app");
                     }
                 } catch (TimeoutException e) {
+                    rm.sadd(redisErrors, sha);
                     Writer.v().perror("Timeout reached");
                 } catch (ExecutionException e) {
+                    rm.sadd(redisErrors, sha);
                     Writer.v().perror(String.format("An exception occurred within the task: %s", e.getMessage()));
                 }
                 if (new File(apkPath).delete()) {
