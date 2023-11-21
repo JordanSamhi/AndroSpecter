@@ -197,7 +197,7 @@ public class Instrumenter {
     /**
      * Modifies all method calls within a body to include a log statement that logs the signature of the calling and called method.
      * The log statement is inserted as the first instruction of each method invocation.
-     * Example of log added to method a() that calls method b(): a()-->b()
+     * Example of log added to method a() that calls method b(): a()--&gt;b()
      *
      * @param tagToLog The tag to be used in the log statements.
      */
