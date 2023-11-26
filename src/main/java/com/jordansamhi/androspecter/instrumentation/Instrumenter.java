@@ -285,10 +285,12 @@ public class Instrumenter {
         addTransformation("jtp.statementsLogger", b -> {
             Chain<Unit> units = b.getUnits();
             Map<Unit, String> insertionPointsToMessage = new HashMap<>();
+            int cnt = 0;
             for (Unit u : units) {
+                cnt++;
                 Stmt stmt = (Stmt) u;
                 if (!(stmt instanceof IdentityStmt)) {
-                    String messageToLog = String.format("STATEMENT=%s|%s", b.getMethod(), stmt);
+                    String messageToLog = String.format("STATEMENT=%s|%s|%d", b.getMethod(), stmt, cnt);
                     insertionPointsToMessage.put(u, messageToLog);
                 }
             }
