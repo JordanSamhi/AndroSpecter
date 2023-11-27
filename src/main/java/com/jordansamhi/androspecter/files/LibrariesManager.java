@@ -3,6 +3,9 @@ package com.jordansamhi.androspecter.files;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.SootClass;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /*-
  * #%L
  * AndroSpecter
@@ -38,9 +41,11 @@ import soot.SootClass;
 public class LibrariesManager extends FileLoader {
 
     private static LibrariesManager instance;
+    private Set<SootClass> libraries;
 
     private LibrariesManager() {
         super();
+        this.libraries = new HashSet<>();
     }
 
     public static LibrariesManager v() {
@@ -62,8 +67,12 @@ public class LibrariesManager extends FileLoader {
      * @return true if the SootClass belongs to a library, false otherwise
      */
     public boolean isLibrary(SootClass sc) {
+        if (this.libraries.contains(sc)) {
+            return true;
+        }
         for (String s : this.items) {
             if (sc.getName().startsWith(String.format("%s.", s))) {
+                this.libraries.add(sc);
                 return true;
             }
         }
