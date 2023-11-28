@@ -5,6 +5,7 @@ import soot.SootClass;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /*-
  * #%L
@@ -41,7 +42,7 @@ import java.util.Set;
 public class LibrariesManager extends FileLoader {
 
     private static LibrariesManager instance;
-    private Set<SootClass> libraries;
+    private Set<SootClass> libraries = ConcurrentHashMap.newKeySet();
 
     private LibrariesManager() {
         super();
@@ -66,16 +67,30 @@ public class LibrariesManager extends FileLoader {
      * @param sc the SootClass to check for library membership
      * @return true if the SootClass belongs to a library, false otherwise
      */
+//    public boolean isLibrary(SootClass sc) {
+//        if (this.libraries.contains(sc)) {
+//            return true;
+//        }
+//        for (String s : this.items) {
+//            if (sc.getName().startsWith(String.format("%s.", s))) {
+//                this.libraries.add(sc);
+//                return true;
+//            }
+//        }
+//        return false;
+//    }
     public boolean isLibrary(SootClass sc) {
-        if (this.libraries.contains(sc)) {
+        if (libraries.contains(sc)) {
             return true;
         }
-        for (String s : this.items) {
-            if (sc.getName().startsWith(String.format("%s.", s))) {
-                this.libraries.add(sc);
-                return true;
-            }
+
+        boolean isLibrary = items.parallelStream()
+                .anyMatch(item -> sc.getName().startsWith(item + "."));
+
+        if (isLibrary) {
+            libraries.add(sc);
         }
-        return false;
+
+        return isLibrary;
     }
 }
