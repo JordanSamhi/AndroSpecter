@@ -127,11 +127,13 @@ public abstract class AndroidAppsProcessor {
                     continue;
                 }
                 Writer.v().psuccess(String.format("SHA well received: %s", sha));
-                String apkPath = this.au.getApk(sha);
 
                 if (rm.sismember(redisSuccess, sha)) {
+                    Writer.v().pwarning(String.format("Skipping app %s since already successfully processed", sha));
                     continue;
                 }
+
+                String apkPath = this.au.getApk(sha);
 
                 ExecutorService executor = Executors.newSingleThreadExecutor();
                 Future<String> future = executor.submit(new Callable<String>() {
