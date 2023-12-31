@@ -12,25 +12,25 @@ class MethodSignatureConverterTest {
 
     @Test
     void testGetClassNameFromJimpleSignature() {
-        String jimpleSignature = "<com.example.MyClass void myMethod(int,double)>";
+        String jimpleSignature = "<com.example.MyClass: void myMethod(int,double)>";
         assertEquals("com.example.MyClass", MethodSignatureConverter.v().getClassNameFromJimpleSignature(jimpleSignature));
     }
 
     @Test
     void testGetMethodNameFromJimpleSignature() {
-        String jimpleSignature = "<com.example.MyClass void myMethod(int,double)>";
+        String jimpleSignature = "<com.example.MyClass: void myMethod(int,double)>";
         assertEquals("myMethod", MethodSignatureConverter.v().getMethodNameFromJimpleSignature(jimpleSignature));
     }
 
     @Test
     void testGetReturnNameFromJimpleSignature() {
-        String jimpleSignature = "<com.example.MyClass void myMethod(int,double)>";
+        String jimpleSignature = "<com.example.MyClass: void myMethod(int,double)>";
         assertEquals("void", MethodSignatureConverter.v().getReturnNameFromJimpleSignature(jimpleSignature));
     }
 
     @Test
     void testGetParametersNamesFromJimpleSignature() {
-        String jimpleSignature = "<com.example.MyClass void myMethod(int,double)>";
+        String jimpleSignature = "<com.example.MyClass: void myMethod(int,double)>";
         List<String> expectedParameters = Arrays.asList("int", "double");
         assertEquals(expectedParameters, MethodSignatureConverter.v().getParametersNamesFromJimpleSignature(jimpleSignature));
     }
@@ -43,7 +43,7 @@ class MethodSignatureConverterTest {
 
     @Test
     void testSigToSubSig() {
-        String sig = "<com.example.MyClass void myMethod(int,double)>";
+        String sig = "<com.example.MyClass: void myMethod(int,double)>";
         assertEquals("void myMethod(int,double)", MethodSignatureConverter.v().sigToSubSig(sig));
     }
 }
