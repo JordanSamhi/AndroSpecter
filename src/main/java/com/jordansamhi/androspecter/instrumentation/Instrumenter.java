@@ -179,16 +179,18 @@ public class Instrumenter {
     }
 
     /**
-     * Adds a log statement to all class constructors and static initializers within the scope of the application classes.
-     * The log statement will log the signature of the class constructor or static initializer.
+     * Adds a transformation to log all classes that are processed. This method specifically targets
+     * the constructors (both instance and static) of the classes and injects logging instructions into them.
+     * The logging is tagged with a specified tag and includes the class name.
      *
-     * @param tagToLog The logging tag that will be used in the added log statements.
+     * @param tagToLog The tag to be used in the logging statements. This helps in categorizing or filtering logs.
      */
+
     public void logAllClasses(String tagToLog) {
         addTransformation("jtp.classesLogger", b -> {
             SootMethod sm = b.getMethod();
-            String subsig = sm.getSubSignature();
-            if (subsig.equals(Constants.INIT) || subsig.equals(Constants.CLINIT)) {
+            String methodName = sm.getName();
+            if (methodName.equals(Constants.INIT) || methodName.equals(Constants.CLINIT)) {
                 addLogToMethod(sm, tagToLog, String.format("CLASS=%s", sm.getDeclaringClass().getName()));
             }
         });

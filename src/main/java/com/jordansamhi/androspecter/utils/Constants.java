@@ -56,12 +56,11 @@ public class Constants {
      */
     public static final String LOG_D = "int d(java.lang.String,java.lang.String)";
     public static final String ONCREATE_ACTIVITY = "void onCreate(android.os.Bundle)";
-    public static final String ONSTART_ACTIVITY = "void onCreate(android.os.Bundle)";
     public static final String ONCREATE_SERVICE = "void onCreate()";
     public static final String ONRECEIVE = "onReceive(android.content.Context,android.content.Intent)";
     public static final String ONCREATE_CONTENT_PROVIDER = "boolean onCreate()";
-    public static final String INIT = "void <init>()";
-    public static final String CLINIT = "void <clinit>()";
+    public static final String INIT = "<init>";
+    public static final String CLINIT = "<clinit>";
 
     /**
      * Misc
