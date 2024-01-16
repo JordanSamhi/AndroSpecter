@@ -7,10 +7,7 @@ import soot.jimple.*;
 import soot.options.Options;
 import soot.util.Chain;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 
 /*-
@@ -39,20 +36,20 @@ import java.util.function.Consumer;
  */
 
 /**
- * Singleton class for instrumenting SootMethods
+ * Singleton class for instrumenting SootMethods to add log statements
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
-public class Instrumenter {
+public class Logger {
 
     private final SootUtils su;
 
-    private static Instrumenter instance;
+    private static Logger instance;
 
     /**
      * Private constructor to prevent external instantiation.
      */
-    private Instrumenter() {
+    private Logger() {
         su = new SootUtils();
     }
 
@@ -61,9 +58,10 @@ public class Instrumenter {
      *
      * @return the singleton instance of Instrumenter.
      */
-    public static Instrumenter v() {
+    public static Logger v() {
         if (instance == null) {
-            instance = new Instrumenter();
+            instance = new Logger();
+            LogCheckerClass.v().generateClass();
         }
         return instance;
     }
@@ -84,37 +82,67 @@ public class Instrumenter {
     }
 
     /**
-     * Inserts a log statement at a specified location within a set of units in the body of a method.
+     * Inserts a log statement into a chain of units at a specified point.
+     * This method is used to dynamically add logging statements to the bytecode during the transformation process.
+     * It handles the insertion of a log statement either before or after a given unit (instruction) in a method's body.
+     * The method also addresses an anomaly where some methods with a void return type may not have a return statement in Jimple (possibly a Soot bug).
      *
-     * @param units          The chain of units in the method where the log statement is to be inserted.
-     * @param insertionPoint The specific unit in the method where the log statement is to be inserted.
-     * @param tagToLog       The tag to be used in the log statement.
-     * @param messageToLog   The message to be logged.
-     * @param b              The body of the method where the log statement is to be inserted.
-     * @param after          Whether inserting the log statement after the insertionPoint
+     * @param units          The chain of units (instructions) in a method's body where the log statement is to be inserted.
+     * @param insertionPoint The specific unit (instruction) after or before which the log statement is to be inserted.
+     * @param tagToLog       The tag associated with the log statement. This is used for categorizing the log entries.
+     * @param messageToLog   The message to be logged. This typically contains information about the statement being logged.
+     * @param b              The body of the method where the logging is to be inserted. This is used for validation.
+     * @param after          A boolean indicating whether the log statement should be inserted after (true) or before (false) the insertion point.
      */
     public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
-        SootMethodRef logMethodRef = this.su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
+        // Not sure why but some methods with return type set as "void"
+        // do not have a return statement in Jimple, probably a bug in Soot
+        this.patchReturnStatement(b.getMethod().getReturnType(), units);
+
+        SootMethodRef logMethodRef = this.su.getMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_LOG);
         List<Unit> unitsToAdd = new ArrayList<>();
         List<Value> params = new ArrayList<>();
         Value tag = StringConstant.v(tagToLog);
         Value message = StringConstant.v(messageToLog);
-        params.add(tag);
         params.add(message);
+        params.add(tag);
         Unit newUnit = Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(logMethodRef, params));
+
         unitsToAdd.add(newUnit);
+
         if (after) {
             units.insertAfter(unitsToAdd, insertionPoint);
         } else {
             units.insertBefore(unitsToAdd, insertionPoint);
         }
 
-        // Not sure why but some methods with return type set as "void"
-        // do not have a return statement in Jimple, probably a bug in Soot
-        this.patchReturnStatement(b.getMethod().getReturnType(), units);
-
         b.validate();
     }
+
+    /**
+     * Retrieves the next {@code Unit} in a {@code Chain} following a specified insertion point.
+     * This method iterates through the {@code Chain} of {@code Unit}s and returns the {@code Unit}
+     * that immediately follows the specified {@code insertionPoint}. If the {@code insertionPoint}
+     * is not found, or if it is the last element in the {@code Chain}, the method returns {@code null}.
+     *
+     * @param units          the {@code Chain<Unit>} to be searched.
+     * @param insertionPoint the {@code Unit} that serves as the reference point for finding the next {@code Unit}.
+     * @return the next {@code Unit} following the {@code insertionPoint}, or {@code null} if the insertion point
+     * is not found or is the last element in the {@code Chain}.
+     */
+    private Unit getNextUnit(Chain<Unit> units, Unit insertionPoint) {
+        boolean foundInsertionPoint = false;
+        for (Unit unit : units) {
+            if (foundInsertionPoint) {
+                return unit;
+            }
+            if (unit.equals(insertionPoint)) {
+                foundInsertionPoint = true;
+            }
+        }
+        return null;
+    }
+
 
     /**
      * Adds a return statement to a list of units based on the return type.
@@ -174,8 +202,16 @@ public class Instrumenter {
     public void logAllMethods(String tagToLog) {
         addTransformation("jtp.methodsLogger", b -> {
             SootMethod sm = b.getMethod();
+            if (this.isLogCheckerClass(sm)) {
+                return;
+            }
             addLogToMethod(sm, tagToLog, String.format("METHOD=%s", sm.getSignature()));
         });
+    }
+
+    private boolean isLogCheckerClass(SootMethod sm) {
+        String className = sm.getDeclaringClass().getName();
+        return className.equals(Constants.LOG_CHECKER_CLASS);
     }
 
     /**
@@ -188,6 +224,9 @@ public class Instrumenter {
 
     public void logAllClasses(String tagToLog) {
         addTransformation("jtp.classesLogger", b -> {
+            if (this.isLogCheckerClass(b.getMethod())) {
+                return;
+            }
             SootMethod sm = b.getMethod();
             String methodName = sm.getName();
             if (methodName.equals(Constants.INIT) || methodName.equals(Constants.CLINIT)) {
@@ -205,6 +244,9 @@ public class Instrumenter {
      */
     public void logAllMethodCalls(String tagToLog) {
         addTransformation("jtp.methodCallsLogger", b -> {
+            if (this.isLogCheckerClass(b.getMethod())) {
+                return;
+            }
             Chain<Unit> units = b.getUnits();
             Map<Unit, String> insertionPointsToMessage = new HashMap<>();
             for (Unit u : units) {
@@ -225,18 +267,16 @@ public class Instrumenter {
     /**
      * Internal method to log Android components based on given parameters.
      *
-     * @param tagToLog        Tag to log in the log statement.
-     * @param phaseName       Phase during which this method is invoked.
-     * @param componentType   Type of the Android component (Activity, Service, etc.).
-     * @param methodSignature Signature of the method in the component.
+     * @param tagToLog      Tag to log in the log statement.
+     * @param phaseName     Phase during which this method is invoked.
+     * @param componentType Type of the Android component (Activity, Service, etc.).
      */
-    private void logAndroidComponent(String tagToLog, String phaseName, String componentType,
-                                     String methodSignature) {
+    private void logAndroidComponent(String tagToLog, String phaseName, String componentType, Set<String> methods) {
         addTransformation(phaseName, b -> {
             SootMethod sm = b.getMethod();
             SootClass sc = sm.getDeclaringClass();
             String actualComponentType = su.getComponentType(sc);
-            if (actualComponentType.equals(componentType) && sm.getSubSignature().equals(methodSignature)) {
+            if (actualComponentType.equals(componentType) && methods.contains(sm.getSubSignature())) {
                 addLogToMethod(sm, tagToLog, String.format("%s=%s", componentType.toUpperCase(), sc.getName()));
             }
         });
@@ -248,7 +288,17 @@ public class Instrumenter {
      * @param tagToLog Logging tag.
      */
     public void logActivities(String tagToLog) {
-        logAndroidComponent(tagToLog, "jtp.activitiesLogger", Constants.ACTIVITY, Constants.ONCREATE_ACTIVITY);
+        Set<String> methods = new HashSet<>();
+        methods.add(Constants.ONCREATE_ACTIVITY);
+        methods.add(Constants.ONCREATE1_ACTIVITY);
+        methods.add(Constants.ONSTART_ACTIVITY);
+        methods.add(Constants.ONRESTART_ACTIVITY);
+        methods.add(Constants.ONSTATENOTSAVED_ACTIVITY);
+        methods.add(Constants.ONRESUME_ACTIVITY);
+        methods.add(Constants.ONPAUSE_ACTIVITY);
+        methods.add(Constants.ONSTOP_ACTIVITY);
+        methods.add(Constants.ONDESTROY_ACTIVITY);
+        logAndroidComponent(tagToLog, "jtp.activitiesLogger", Constants.ACTIVITY, methods);
     }
 
     /**
@@ -257,7 +307,15 @@ public class Instrumenter {
      * @param tagToLog Logging tag.
      */
     public void logServices(String tagToLog) {
-        logAndroidComponent(tagToLog, "jtp.servicesLogger", Constants.SERVICE, Constants.ONCREATE_SERVICE);
+        Set<String> methods = new HashSet<>();
+        methods.add(Constants.ONCREATE_SERVICE);
+        methods.add(Constants.ONSTART_SERVICE);
+        methods.add(Constants.ONSTARTCOMMAND_SERVICE);
+        methods.add(Constants.ONDESTROY_SERVICE);
+        methods.add(Constants.ONBIND_SERVICE);
+        methods.add(Constants.ONUNBIND_SERVICE);
+        methods.add(Constants.ONREBIND_SERVICE);
+        logAndroidComponent(tagToLog, "jtp.servicesLogger", Constants.SERVICE, methods);
     }
 
     /**
@@ -266,7 +324,9 @@ public class Instrumenter {
      * @param tagToLog The tag to be used in the log statement.
      */
     public void logBroadcastReceivers(String tagToLog) {
-        logAndroidComponent(tagToLog, "jtp.broadcastReceiversLogger", Constants.BROADCAST_RECEIVER, Constants.ONRECEIVE);
+        Set<String> methods = new HashSet<>();
+        methods.add(Constants.ONRECEIVE);
+        logAndroidComponent(tagToLog, "jtp.broadcastReceiversLogger", Constants.BROADCAST_RECEIVER, methods);
     }
 
     /**
@@ -275,26 +335,41 @@ public class Instrumenter {
      * @param tagToLog The tag to be used in the log statement.
      */
     public void logContentProviders(String tagToLog) {
-        logAndroidComponent(tagToLog, "jtp.contentProvidersLogger", Constants.CONTENT_PROVIDER, Constants.ONCREATE_CONTENT_PROVIDER);
+        Set<String> methods = new HashSet<>();
+        methods.add(Constants.ONCREATE_CONTENT_PROVIDER);
+        logAndroidComponent(tagToLog, "jtp.contentProvidersLogger", Constants.CONTENT_PROVIDER, methods);
     }
 
     /**
-     * Logs all executable statements in the code.
+     * Logs all executable statements in a given code body except for identity, return, and monitor statements.
+     * It iterates through each unit in the code body and generates log statements for each executable unit.
+     * The log statements are annotated with a unique identifier for the statement, the method containing it, and a sequence number.
+     * This method is especially useful for tracking the execution flow and identifying the occurrence of specific statements.
      *
-     * @param tagToLog The tag to be used in the log statement.
+     * @param tagToLog The tag to be used in the log statement. This tag is used to categorize the log entries.
      */
     public void logAllStatements(String tagToLog) {
         addTransformation("jtp.statementsLogger", b -> {
+            if (this.isLogCheckerClass(b.getMethod())) {
+                return;
+            }
             Chain<Unit> units = b.getUnits();
             Map<Unit, String> insertionPointsToMessage = new HashMap<>();
             int cnt = 0;
             for (Unit u : units) {
                 cnt++;
                 Stmt stmt = (Stmt) u;
-                if (!(stmt instanceof IdentityStmt)) {
-                    String messageToLog = String.format("STATEMENT=%s|%s|%d", b.getMethod(), stmt, cnt);
-                    insertionPointsToMessage.put(u, messageToLog);
+                if (stmt instanceof IdentityStmt) {
+                    continue;
                 }
+                if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
+                    continue;
+                }
+                if (stmt instanceof MonitorStmt) {
+                    continue;
+                }
+                String messageToLog = String.format("STATEMENT=%s|%s|%d", b.getMethod(), stmt, cnt);
+                insertionPointsToMessage.put(u, messageToLog);
             }
             for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
                 addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, true);
