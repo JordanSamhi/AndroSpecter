@@ -67,18 +67,6 @@ public class LibrariesManager extends FileLoader {
      * @param sc the SootClass to check for library membership
      * @return true if the SootClass belongs to a library, false otherwise
      */
-//    public boolean isLibrary(SootClass sc) {
-//        if (this.libraries.contains(sc)) {
-//            return true;
-//        }
-//        for (String s : this.items) {
-//            if (sc.getName().startsWith(String.format("%s.", s))) {
-//                this.libraries.add(sc);
-//                return true;
-//            }
-//        }
-//        return false;
-//    }
     public boolean isLibrary(SootClass sc) {
         if (libraries.contains(sc)) {
             return true;
