@@ -1,6 +1,7 @@
 package com.jordansamhi.androspecter.instrumentation;
 
 import com.jordansamhi.androspecter.SootUtils;
+import com.jordansamhi.androspecter.files.LibrariesManager;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
@@ -195,13 +196,19 @@ public class Logger {
     }
 
     /**
-     * Adds a log statement to all methods within the scope of the application classes.
+     * Adds a log statement to all methods within the scope of the application classes, with an option to include or exclude library methods.
      *
-     * @param tagToLog The logging tag that will be used in the added log statements.
+     * @param tagToLog         The logging tag that will be used in the added log statements.
+     * @param includeLibraries A boolean flag indicating whether library methods should be included in the logging.
+     *                         If true, log statements will be added to both application and library methods.
+     *                         If false, only application methods will be logged.
      */
-    public void logAllMethods(String tagToLog) {
+    public void logAllMethods(String tagToLog, boolean includeLibraries) {
         addTransformation("jtp.methodsLogger", b -> {
             SootMethod sm = b.getMethod();
+            if (!includeLibraries && LibrariesManager.v().isLibrary(sm.getDeclaringClass())) {
+                return;
+            }
             if (this.isLogCheckerClass(sm)) {
                 return;
             }
@@ -209,22 +216,33 @@ public class Logger {
         });
     }
 
+    /**
+     * Checks if the given method belongs to the log checker class.
+     * This is used to determine if logging should be applied to the method.
+     *
+     * @param sm The SootMethod instance to be checked.
+     * @return true if the method's declaring class is the log checker class, false otherwise.
+     */
     private boolean isLogCheckerClass(SootMethod sm) {
         String className = sm.getDeclaringClass().getName();
         return className.equals(Constants.LOG_CHECKER_CLASS);
     }
 
     /**
-     * Adds a transformation to log all classes that are processed. This method specifically targets
-     * the constructors (both instance and static) of the classes and injects logging instructions into them.
-     * The logging is tagged with a specified tag and includes the class name.
+     * Adds a transformation to log all classes processed by the application, targeting constructors (both instance and static).
+     * Injects logging instructions into these constructors. The logging is tagged with a specified tag and includes the class name.
      *
-     * @param tagToLog The tag to be used in the logging statements. This helps in categorizing or filtering logs.
+     * @param tagToLog         The tag to be used in the logging statements. This helps in categorizing or filtering logs.
+     * @param includeLibraries A boolean flag indicating whether to include library classes in the logging.
+     *                         If true, logging will be added to both application and library class constructors.
+     *                         If false, only application class constructors will be logged.
      */
-
-    public void logAllClasses(String tagToLog) {
+    public void logAllClasses(String tagToLog, boolean includeLibraries) {
         addTransformation("jtp.classesLogger", b -> {
             if (this.isLogCheckerClass(b.getMethod())) {
+                return;
+            }
+            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             SootMethod sm = b.getMethod();
@@ -236,15 +254,22 @@ public class Logger {
     }
 
     /**
-     * Modifies all method calls within a body to include a log statement that logs the signature of the calling and called method.
-     * The log statement is inserted as the first instruction of each method invocation.
-     * Example of log added to method a() that calls method b(): a()--&gt;b()
+     * Modifies all method calls within a method body to include a log statement that logs the signature of both the calling and called methods.
+     * The log statement is inserted at the point of each method invocation. This method can be configured to include or exclude library methods.
+     * Example log for method 'a()' calling 'b()': a()--&gt;b().
      *
-     * @param tagToLog The tag to be used in the log statements.
+     * @param tagToLog         The tag to be used in the log statements.
+     * @param includeLibraries A boolean flag to determine whether library methods should be included in the logging.
+     *                         If true, logging will include method calls in both application and library methods.
+     *                         If false, only method calls in application methods will be logged.
      */
-    public void logAllMethodCalls(String tagToLog) {
+
+    public void logAllMethodCalls(String tagToLog, boolean includeLibraries) {
         addTransformation("jtp.methodCallsLogger", b -> {
             if (this.isLogCheckerClass(b.getMethod())) {
+                return;
+            }
+            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             Chain<Unit> units = b.getUnits();
@@ -265,14 +290,22 @@ public class Logger {
     }
 
     /**
-     * Internal method to log Android components based on given parameters.
+     * Internal method to log specific Android components based on given parameters.
+     * Logs are added to methods that match the specified component type and are part of the provided set of methods.
      *
-     * @param tagToLog      Tag to log in the log statement.
-     * @param phaseName     Phase during which this method is invoked.
-     * @param componentType Type of the Android component (Activity, Service, etc.).
+     * @param tagToLog         Tag to be used in the log statement.
+     * @param phaseName        Phase during which this method is invoked.
+     * @param componentType    Type of the Android component (e.g., Activity, Service, etc.).
+     * @param methods          Set of method signatures to be logged within the specified component.
+     * @param includeLibraries A boolean flag to determine whether library methods should be included in the logging.
+     *                         If true, logging will include methods in both application and library Android components.
+     *                         If false, only methods in application Android components will be logged.
      */
-    private void logAndroidComponent(String tagToLog, String phaseName, String componentType, Set<String> methods) {
+    private void logAndroidComponent(String tagToLog, String phaseName, String componentType, Set<String> methods, boolean includeLibraries) {
         addTransformation(phaseName, b -> {
+            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+                return;
+            }
             SootMethod sm = b.getMethod();
             SootClass sc = sm.getDeclaringClass();
             String actualComponentType = su.getComponentType(sc);
@@ -283,11 +316,16 @@ public class Logger {
     }
 
     /**
-     * Registers a log statement to be inserted into Android Activities' {@code onCreate} methods.
+     * Registers a log statement to be inserted into specific lifecycle methods of Android Activities.
+     * This includes methods like onCreate, onStart, onResume, onPause, etc.
+     * The method can be configured to include or exclude library activities.
      *
-     * @param tagToLog Logging tag.
+     * @param tagToLog         Logging tag to be used in the inserted log statements.
+     * @param includeLibraries A boolean flag to determine whether library Activities should be included in the logging.
+     *                         If true, logging will include specified lifecycle methods in both application and library Activities.
+     *                         If false, only those in application Activities will be logged.
      */
-    public void logActivities(String tagToLog) {
+    public void logActivities(String tagToLog, boolean includeLibraries) {
         Set<String> methods = new HashSet<>();
         methods.add(Constants.ONCREATE_ACTIVITY);
         methods.add(Constants.ONCREATE1_ACTIVITY);
@@ -298,15 +336,20 @@ public class Logger {
         methods.add(Constants.ONPAUSE_ACTIVITY);
         methods.add(Constants.ONSTOP_ACTIVITY);
         methods.add(Constants.ONDESTROY_ACTIVITY);
-        logAndroidComponent(tagToLog, "jtp.activitiesLogger", Constants.ACTIVITY, methods);
+        logAndroidComponent(tagToLog, "jtp.activitiesLogger", Constants.ACTIVITY, methods, includeLibraries);
     }
 
     /**
-     * Registers a log statement to be inserted into Android Services' {@code onCreate} methods.
+     * Registers a log statement to be inserted into specific lifecycle methods of Android Services.
+     * This includes methods like onCreate, onStartCommand, onDestroy, onBind, etc.
+     * The method can be configured to include or exclude library services.
      *
-     * @param tagToLog Logging tag.
+     * @param tagToLog         Logging tag to be used in the inserted log statements.
+     * @param includeLibraries A boolean flag to determine whether library Services should be included in the logging.
+     *                         If true, logging will include specified lifecycle methods in both application and library Services.
+     *                         If false, only those in application Services will be logged.
      */
-    public void logServices(String tagToLog) {
+    public void logServices(String tagToLog, boolean includeLibraries) {
         Set<String> methods = new HashSet<>();
         methods.add(Constants.ONCREATE_SERVICE);
         methods.add(Constants.ONSTART_SERVICE);
@@ -315,41 +358,56 @@ public class Logger {
         methods.add(Constants.ONBIND_SERVICE);
         methods.add(Constants.ONUNBIND_SERVICE);
         methods.add(Constants.ONREBIND_SERVICE);
-        logAndroidComponent(tagToLog, "jtp.servicesLogger", Constants.SERVICE, methods);
+        logAndroidComponent(tagToLog, "jtp.servicesLogger", Constants.SERVICE, methods, includeLibraries);
     }
 
     /**
-     * Logs execution of Broadcast Receivers within a given phase.
+     * Logs execution of Broadcast Receivers, specifically the {@code onReceive} method.
+     * The method can be configured to include or exclude library Broadcast Receivers.
      *
-     * @param tagToLog The tag to be used in the log statement.
+     * @param tagToLog         The tag to be used in the log statement.
+     * @param includeLibraries A boolean flag to determine whether library Broadcast Receivers should be included in the logging.
+     *                         If true, logging will include the {@code onReceive} method in both application and library Broadcast Receivers.
+     *                         If false, only those in application Broadcast Receivers will be logged.
      */
-    public void logBroadcastReceivers(String tagToLog) {
+    public void logBroadcastReceivers(String tagToLog, boolean includeLibraries) {
         Set<String> methods = new HashSet<>();
         methods.add(Constants.ONRECEIVE);
-        logAndroidComponent(tagToLog, "jtp.broadcastReceiversLogger", Constants.BROADCAST_RECEIVER, methods);
+        logAndroidComponent(tagToLog, "jtp.broadcastReceiversLogger", Constants.BROADCAST_RECEIVER, methods, includeLibraries);
     }
 
     /**
-     * Logs execution of Content Providers within a given phase.
+     * Logs execution of Content Providers, focusing on the {@code onCreate} method.
+     * The method can be configured to include or exclude library Content Providers.
      *
-     * @param tagToLog The tag to be used in the log statement.
+     * @param tagToLog         The tag to be used in the log statement.
+     * @param includeLibraries A boolean flag to determine whether library Content Providers should be included in the logging.
+     *                         If true, logging will include the {@code onCreate} method in both application and library Content Providers.
+     *                         If false, only those in application Content Providers will be logged.
      */
-    public void logContentProviders(String tagToLog) {
+    public void logContentProviders(String tagToLog, boolean includeLibraries) {
         Set<String> methods = new HashSet<>();
         methods.add(Constants.ONCREATE_CONTENT_PROVIDER);
-        logAndroidComponent(tagToLog, "jtp.contentProvidersLogger", Constants.CONTENT_PROVIDER, methods);
+        logAndroidComponent(tagToLog, "jtp.contentProvidersLogger", Constants.CONTENT_PROVIDER, methods, includeLibraries);
     }
 
     /**
-     * Logs all executable statements in a given code body except for identity, return, and monitor statements.
-     * It iterates through each unit in the code body and generates log statements for each executable unit.
-     * The log statements are annotated with a unique identifier for the statement, the method containing it, and a sequence number.
-     * This method is especially useful for tracking the execution flow and identifying the occurrence of specific statements.
+     * Logs all executable statements in a given code body, except for identity, return, and monitor statements.
+     * Iterates through each unit in the code body, generating log statements for each executable unit.
+     * Log statements include a unique identifier for the statement, the method containing it, and a sequence number.
+     * Useful for tracking execution flow and identifying occurrences of specific statements.
+     * Can be configured to include or exclude library methods.
      *
-     * @param tagToLog The tag to be used in the log statement. This tag is used to categorize the log entries.
+     * @param tagToLog         The tag to be used in the log statement. This tag is used to categorize the log entries.
+     * @param includeLibraries A boolean flag to determine whether library methods should be included in the logging.
+     *                         If true, logging will include executable statements in both application and library methods.
+     *                         If false, only executable statements in application methods will be logged.
      */
-    public void logAllStatements(String tagToLog) {
+    public void logAllStatements(String tagToLog, boolean includeLibraries) {
         addTransformation("jtp.statementsLogger", b -> {
+            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+                return;
+            }
             if (this.isLogCheckerClass(b.getMethod())) {
                 return;
             }
