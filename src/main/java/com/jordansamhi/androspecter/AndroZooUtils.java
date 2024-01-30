@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.text.DecimalFormat;
 
 /*-
  * #%L
@@ -81,6 +82,10 @@ public class AndroZooUtils {
             int responseCode = httpConn.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 Writer.v().psuccess("APK found in AndroZoo, downloading in progress...");
+                long fileSize = httpConn.getContentLengthLong();
+                if (fileSize != -1) {
+                    Writer.v().pinfo(String.format("APK size: %s bytes", readableFileSize(fileSize)));
+                }
                 InputStream inputStream = httpConn.getInputStream();
                 String filePath = String.format("%s/%s.apk", this.path, sha256);
                 File f = new File(this.path);
@@ -108,5 +113,12 @@ public class AndroZooUtils {
             Writer.v().perror(String.format("An exception occurred: %s", e.getMessage()));
         }
         return null;
+    }
+
+    public static String readableFileSize(long size) {
+        if (size <= 0) return "0 B";
+        final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
+        return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 }
