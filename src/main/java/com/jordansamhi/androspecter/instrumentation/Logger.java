@@ -62,6 +62,8 @@ public class Logger {
     public static Logger v() {
         if (instance == null) {
             instance = new Logger();
+        }
+        if (Scene.v().getSootClass(Constants.LOG_CHECKER_CLASS).getMethods().isEmpty()) {
             LogCheckerClass.v().generateClass();
         }
         return instance;
