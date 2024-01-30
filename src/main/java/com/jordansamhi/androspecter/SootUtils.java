@@ -74,7 +74,8 @@ public class SootUtils {
     public SootMethodRef getMethodRef(String className, String methodName) {
         SootMethod sm;
         try {
-            sm = Scene.v().getSootClass(className).getMethod(methodName);
+            SootClass sc = Scene.v().getSootClass(className);
+            sm = sc.getMethod(methodName);
             return sm.makeRef();
         } catch (Exception e) {
             e.printStackTrace();
@@ -489,6 +490,7 @@ public class SootUtils {
         Options.v().set_src_prec(Options.src_prec_apk);
         Options.v().set_process_dir(Collections.singletonList(apkPath));
         Options.v().set_include_all(true);
+        this.addClasses();
         Scene.v().loadNecessaryClasses();
     }
 
@@ -538,7 +540,21 @@ public class SootUtils {
         Options.v().set_src_prec(Options.src_prec_apk);
         Options.v().set_process_dir(Collections.singletonList(apkPath));
         Options.v().set_include_all(true);
+        this.addClasses();
         Scene.v().loadNecessaryClasses();
+    }
+
+    private void addClasses() {
+        Scene.v().addBasicClass(Constants.ANDROID_UTIL_LOG, SootClass.SIGNATURES);
+        Scene.v().loadClassAndSupport(Constants.ANDROID_UTIL_LOG);
+        Scene.v().addBasicClass(Constants.JAVA_UTIL_HASHSET, SootClass.SIGNATURES);
+        Scene.v().loadClassAndSupport(Constants.JAVA_UTIL_HASHSET);
+        Scene.v().addBasicClass(Constants.JAVA_LANG_OBJECT, SootClass.SIGNATURES);
+        Scene.v().loadClassAndSupport(Constants.JAVA_LANG_OBJECT);
+        Scene.v().addBasicClass(Constants.JAVA_UTIL_SET, SootClass.SIGNATURES);
+        Scene.v().loadClassAndSupport(Constants.JAVA_UTIL_SET);
+        Scene.v().addBasicClass(Constants.JAVA_LANG_OBJECT, SootClass.SIGNATURES);
+        Scene.v().loadClassAndSupport(Constants.JAVA_LANG_OBJECT);
     }
 
 }
