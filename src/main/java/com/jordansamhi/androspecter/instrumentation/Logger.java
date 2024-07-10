@@ -47,6 +47,9 @@ public class Logger {
 
     private static Logger instance;
 
+    // Field to specify the target package name
+    private String targetPackage;
+
     /**
      * Private constructor to prevent external instantiation.
      */
@@ -67,6 +70,25 @@ public class Logger {
             LogCheckerClass.v().generateClass();
         }
         return instance;
+    }
+
+    /**
+     * Sets the target package name for filtering which classes should be instrumented.
+     *
+     * @param targetPackage The package name to target for instrumentation.
+     */
+    public void setTargetPackage(String targetPackage) {
+        this.targetPackage = targetPackage;
+    }
+
+    /**
+     * Checks if the method's declaring class is within the target package.
+     *
+     * @param sm The SootMethod instance.
+     * @return true if the class is within the target package, false otherwise.
+     */
+    private boolean isTargetPackage(SootMethod sm) {
+        return sm.getDeclaringClass().getPackageName().startsWith(targetPackage);
     }
 
     /**
@@ -98,6 +120,12 @@ public class Logger {
      * @param after          A boolean indicating whether the log statement should be inserted after (true) or before (false) the insertion point.
      */
     public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
+
+        // Check if the method's declaring class is within the target package, if specified
+        if (targetPackage != null && !isTargetPackage(b.getMethod())) {
+            return;
+        }
+
         // Not sure why but some methods with return type set as "void"
         // do not have a return statement in Jimple, probably a bug in Soot
         this.patchReturnStatement(b.getMethod().getReturnType(), units);
