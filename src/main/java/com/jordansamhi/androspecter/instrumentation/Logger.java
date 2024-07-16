@@ -309,6 +309,9 @@ public class Logger {
                 InvokeExpr ie;
                 if (stmt.containsInvokeExpr()) {
                     ie = stmt.getInvokeExpr();
+                    if (this.isLogCheckerClass(ie.getMethod())) {
+                        continue;
+                    }
                     String messageToLog = String.format("CALL=%s-->%s", b.getMethod().getSignature(), ie.getMethod().getSignature());
                     insertionPointsToMessage.put(u, messageToLog);
                 }
