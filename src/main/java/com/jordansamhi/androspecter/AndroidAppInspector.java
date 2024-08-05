@@ -58,7 +58,10 @@ public abstract class AndroidAppInspector {
      * Starts the inspection process, examining classes, methods, and statements as per the criteria.
      */
     public void run() {
-        for (SootClass sc : Scene.v().getClasses()) {
+        Chain<SootClass> classes = Scene.v().getClasses();
+        Iterator<SootClass> classIterator = classes.snapshotIterator();
+        while (classIterator.hasNext()) {
+            SootClass sc = classIterator.next();
             processClass(sc);
         }
     }
