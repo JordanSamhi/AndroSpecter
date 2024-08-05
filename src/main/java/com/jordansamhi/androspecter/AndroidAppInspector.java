@@ -72,7 +72,9 @@ public abstract class AndroidAppInspector {
         if (examineClasses) {
             examineClass(sc);
         }
-        for (SootMethod sm : sc.getMethods()) {
+        Iterator<SootMethod> methodIterator = sc.getMethods().iterator();
+        while (methodIterator.hasNext()) {
+            SootMethod sm = methodIterator.next();
             processMethod(sc, sm);
         }
     }
