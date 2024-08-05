@@ -3,6 +3,8 @@ package com.jordansamhi.androspecter;
 import soot.*;
 import soot.util.Chain;
 
+import java.util.Iterator;
+
 /**
  * Abstract class to inspect Android classes, methods, and statements.
  * Implement the abstract methods to define custom actions for inspection.
@@ -99,7 +101,9 @@ public abstract class AndroidAppInspector {
      */
     private void processStatements(SootClass sc, SootMethod sm, Body body) {
         Chain<Unit> units = body.getUnits();
-        for (Unit u : units) {
+        Iterator<Unit> iterator = units.snapshotIterator();
+        while (iterator.hasNext()) {
+            Unit u = iterator.next();
             if (examineStatements) {
                 examineStatement(sc, sm, u);
             }
