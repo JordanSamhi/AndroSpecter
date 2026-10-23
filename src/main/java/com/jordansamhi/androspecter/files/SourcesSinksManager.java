@@ -42,7 +42,7 @@ import java.util.regex.Pattern;
  */
 
 /**
- * A singleton manager class for managing source and sink methods in an Android application.
+ * A manager for source and sink methods. Prefer a new instance per analysis or SourceSinkConfiguration.
  * <p>
  * This class extends the FileLoader class and is responsible for loading, storing, and providing access to
  * source and sink methods. The sources and sinks are represented as sets of AndroidMethod objects.
@@ -52,8 +52,7 @@ import java.util.regex.Pattern;
  * a method and its type (source or sink). The method and type are separated by a "|". The type is expected to be
  * either "SOURCE" or "SINK", and the method is expected to be a Jimple signature of the method.
  * <p>
- * This class is a singleton, meaning there can only be one instance of it during the execution of the application.
- * The instance can be accessed by calling the v() method.
+ * The legacy v() accessor retains shared mutable state for compatibility.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -79,19 +78,26 @@ public class SourcesSinksManager extends FileLoader {
 
 
     /**
-     * A private constructor for the SourcesSinksManager class.
+     * Creates independent source/sink sets initialized from the bundled definitions.
      * <p>
      * This constructor initializes the sources and sinks as new HashSets and
      * then loads sources and sinks by calling the loadSourcesSinks() method.
      */
-    private SourcesSinksManager() {
+    public SourcesSinksManager() {
+        this(true);
+    }
+
+    SourcesSinksManager(boolean includeBundled) {
         super();
         this.sources = new HashSet<>();
         this.sinks = new HashSet<>();
-        this.loadSourcesSinks();
+        if (includeBundled) {
+            this.loadSourcesSinks();
+        }
     }
 
 
+    @Deprecated
     public static synchronized SourcesSinksManager v() {
         if (instance == null) {
             instance = new SourcesSinksManager();
@@ -121,7 +127,22 @@ public class SourcesSinksManager extends FileLoader {
         if (!Constants.SOURCE.equals(type) && !Constants.SINK.equals(type)) {
             throw invalidRecord(location, record, "type must be SOURCE or SINK");
         }
-        Matcher signature = SIGNATURE.matcher(split[1].trim());
+        AndroidMethod method;
+        try {
+            method = parseSignature(split[1].trim(), location);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(ex.getMessage() + "; input record: " + record, ex);
+        }
+        if (Constants.SOURCE.equals(type)) {
+            parsedSources.add(method);
+        } else {
+            parsedSinks.add(method);
+        }
+    }
+
+    static AndroidMethod parseSignature(String value, String location) {
+        String record = java.util.Objects.requireNonNull(value, "signature").trim();
+        Matcher signature = SIGNATURE.matcher(record);
         if (!signature.matches()) {
             throw invalidRecord(location, record, "expected a Jimple method signature <class: returnType method(parameters)>");
         }
@@ -136,16 +157,10 @@ public class SourcesSinksManager extends FileLoader {
                 parameters.add(parameterType);
             }
         }
-        AndroidMethod method = new AndroidMethod(signature.group(3), parameters,
-                signature.group(2), signature.group(1));
-        if (Constants.SOURCE.equals(type)) {
-            parsedSources.add(method);
-        } else {
-            parsedSinks.add(method);
-        }
+        return new AndroidMethod(signature.group(3), parameters, signature.group(2), signature.group(1));
     }
 
-    private IllegalArgumentException invalidRecord(String location, String record, String reason) {
+    private static IllegalArgumentException invalidRecord(String location, String record, String reason) {
         return new IllegalArgumentException("Invalid source/sink record at " + location + ": " + reason + ". Record: " + record);
     }
 

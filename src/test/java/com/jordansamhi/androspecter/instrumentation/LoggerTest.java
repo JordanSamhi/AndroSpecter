@@ -1,6 +1,8 @@
 package com.jordansamhi.androspecter.instrumentation;
 
 import com.jordansamhi.androspecter.utils.Constants;
+import com.jordansamhi.androspecter.analysis.AnalysisContext;
+import com.jordansamhi.androspecter.inspection.LibraryFilter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import soot.toDex.DexPrinter;
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -144,6 +147,153 @@ class LoggerTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, Logger::v);
         assertTrue(failure.getMessage().contains("already exists"));
         assertSame(collision, Scene.v().getSootClass(Constants.LOG_CHECKER_CLASS));
+    }
+
+    @Test
+    void helperLoadsAbsentRuntimeDependenciesFromConfiguredClasspath(@TempDir Path classpath) throws Exception {
+        SootClass hashSet = Scene.v().getSootClass(Constants.JAVA_UTIL_HASHSET);
+        SootMethod constructor = hashSet.getMethod(Constants.SUB_SIG_INIT);
+        JimpleBody body = Jimple.v().newBody(constructor);
+        constructor.setActiveBody(body);
+        Local self = Jimple.v().newLocal("self", hashSet.getType());
+        body.getLocals().add(self);
+        body.getUnits().add(Jimple.v().newIdentityStmt(self, Jimple.v().newThisRef(hashSet.getType())));
+        body.getUnits().add(Jimple.v().newInvokeStmt(Jimple.v().newSpecialInvokeExpr(self,
+                Scene.v().getSootClass(Constants.JAVA_LANG_OBJECT).getMethod(Constants.SUB_SIG_INIT).makeRef())));
+        body.getUnits().add(Jimple.v().newReturnVoidStmt());
+        for (String name : List.of(Constants.JAVA_UTIL_HASHSET, Constants.ANDROID_UTIL_LOG)) {
+            SootClass dependency = Scene.v().getSootClass(name);
+            Path classFile = classpath.resolve(name.replace('.', '/') + ".class");
+            Files.createDirectories(classFile.getParent());
+            Files.write(classFile, bytecode(dependency));
+            Scene.v().removeClass(dependency);
+        }
+        Scene.v().setSootClassPath(classpath.toString());
+        assertFalse(Scene.v().containsClass(Constants.JAVA_UTIL_HASHSET));
+        assertFalse(Scene.v().containsClass(Constants.ANDROID_UTIL_LOG));
+
+        Logger.v();
+
+        assertTrue(Scene.v().getSootClass(Constants.JAVA_UTIL_HASHSET).declaresMethod(Constants.SUB_SIG_INIT));
+        assertTrue(Scene.v().getSootClass(Constants.ANDROID_UTIL_LOG).declaresMethod(Constants.LOG_D));
+        Scene.v().getSootClass(Constants.LOG_CHECKER_CLASS).getMethods().forEach(method -> method.retrieveActiveBody().validate());
+    }
+
+    @Test
+    void missingRuntimeMethodFailsClearlyBeforeAddingTheHelper(@TempDir Path classpath) {
+        SootClass androidLog = Scene.v().getSootClass(Constants.ANDROID_UTIL_LOG);
+        androidLog.removeMethod(androidLog.getMethod(Constants.LOG_D));
+        Scene.v().setSootClassPath(classpath.toString());
+        Options.v().set_allow_phantom_refs(true);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, Logger::v);
+
+        assertTrue(failure.getMessage().contains("android.util.Log"));
+        assertFalse(Scene.v().containsClass(Constants.LOG_CHECKER_CLASS));
+    }
+
+    @Test
+    void independentLoggersKeepFiltersAndRegistrationsOutOfGlobalPacks() {
+        SootClass firstClass = newClass("example.First", Scene.v().getSootClass("java.lang.Object"));
+        SootClass secondClass = newClass("example.Second", Scene.v().getSootClass("java.lang.Object"));
+        firstClass.setApplicationClass();
+        secondClass.setApplicationClass();
+        JimpleBody firstBody = emptyMethod(firstClass, "run");
+        JimpleBody secondBody = emptyMethod(secondClass, "run");
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            Logger first = new Logger(context, InstrumentationOptions.builder().classes(c -> c == firstClass).build());
+            Logger second = new Logger(context, InstrumentationOptions.builder().classes(c -> c == secondClass).build());
+            first.logAllMethods("first-tag", true);
+            second.logAllMethods("second-tag", true);
+            assertNull(PackManager.v().getPack("jtp").get("jtp.methodsLogger"));
+            first.apply(context);
+            assertEquals(1, firstBody.getUnits().stream().filter(this::isProbe).count());
+            assertEquals(0, secondBody.getUnits().stream().filter(this::isProbe).count());
+            second.apply(context);
+            assertEquals(1, firstBody.getUnits().stream().filter(this::isProbe).count());
+            assertEquals(1, secondBody.getUnits().stream().filter(this::isProbe).count());
+            assertEquals("first-tag", ((StringConstant) ((Stmt) firstBody.getUnits().getFirst()).getInvokeExpr().getArg(1)).value);
+            assertEquals("second-tag", ((StringConstant) ((Stmt) secondBody.getUnits().getFirst()).getInvokeExpr().getArg(1)).value);
+        }
+        firstBody.validate();
+        secondBody.validate();
+    }
+
+    @Test
+    void instanceScopeAndCustomLibraryFilterPreventUnselectedBodyLoading() {
+        SootClass selected = newClass("example.Selected", Scene.v().getSootClass("java.lang.Object"));
+        SootClass library = newClass("example.Library", Scene.v().getSootClass("java.lang.Object"));
+        SootClass rejected = newClass("ignored.Other", Scene.v().getSootClass("java.lang.Object"));
+        JimpleBody selectedBody = emptyMethod(selected, "visit");
+        SootMethod skippedMethod = new SootMethod("skip", Collections.emptyList(), VoidType.v(), Modifier.PUBLIC | Modifier.STATIC);
+        SootMethod libraryMethod = new SootMethod("visit", Collections.emptyList(), VoidType.v(), Modifier.PUBLIC | Modifier.STATIC);
+        SootMethod rejectedMethod = new SootMethod("visit", Collections.emptyList(), VoidType.v(), Modifier.PUBLIC | Modifier.STATIC);
+        selected.addMethod(skippedMethod);
+        library.addMethod(libraryMethod);
+        rejected.addMethod(rejectedMethod);
+        InstrumentationOptions options = InstrumentationOptions.builder()
+                .classes(c -> c.getName().startsWith("example."))
+                .methods(m -> m.getName().equals("visit"))
+                .libraryFilter(LibraryFilter.from(c -> c == library)).build();
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            Logger logger = new Logger(context, options);
+            logger.logAllMethods("tag", false);
+            logger.apply(context);
+        }
+        assertTrue(isProbe(selectedBody.getUnits().getFirst()));
+        assertFalse(skippedMethod.hasActiveBody());
+        assertFalse(libraryMethod.hasActiveBody());
+        assertFalse(rejectedMethod.hasActiveBody());
+    }
+
+    @Test
+    void instanceOperationsRunInOrderWithoutLoggingPreviouslyInsertedHelperCalls() {
+        SootClass owner = newClass("example.Target", Scene.v().getSootClass("java.lang.Object"));
+        owner.setApplicationClass();
+        JimpleBody body = emptyMethod(owner, "run");
+        SootMethod callee = new SootMethod("nativeTarget", Collections.emptyList(), VoidType.v(),
+                Modifier.PUBLIC | Modifier.STATIC | Modifier.NATIVE);
+        owner.addMethod(callee);
+        Unit call = Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(callee.makeRef()));
+        body.getUnits().insertBefore(call, body.getUnits().getFirst());
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            Logger logger = new Logger(context);
+            logger.logAllMethods("tag", true);
+            logger.logAllMethodCalls("tag", true);
+            logger.apply(context);
+        }
+        List<String> messages = new ArrayList<>();
+        body.getUnits().stream().filter(this::isProbe).forEach(unit -> messages.add(message(unit)));
+        assertEquals(List.of("METHOD=" + body.getMethod().getSignature(),
+                "CALL=" + body.getMethod().getSignature() + "-->" + callee.getSignature()), messages);
+        body.validate();
+    }
+
+    @Test
+    void libraryPredicateResetStopsBeforeLoadingTheBody() {
+        SootClass owner = newClass("example.Target", Scene.v().getSootClass("java.lang.Object"));
+        owner.setApplicationClass();
+        SootMethod noBody = new SootMethod("run", Collections.emptyList(), VoidType.v(), Modifier.PUBLIC | Modifier.STATIC);
+        owner.addMethod(noBody);
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            Logger logger = new Logger(context, InstrumentationOptions.builder().libraryFilter(c -> {
+                G.reset();
+                return false;
+            }).build());
+            logger.logAllMethods("tag", false);
+            assertThrows(IllegalStateException.class, () -> logger.apply(context));
+        }
+        assertFalse(noBody.hasActiveBody());
+    }
+
+    @Test
+    void instanceLoggerRejectsAnotherContextAndSootReset() {
+        try (AnalysisContext context = AnalysisContext.capture(); AnalysisContext other = AnalysisContext.capture()) {
+            Logger logger = new Logger(context);
+            assertThrows(IllegalArgumentException.class, () -> logger.apply(other));
+            G.reset();
+            assertThrows(IllegalStateException.class, () -> logger.logAllMethods("tag", true));
+        }
     }
 
     @Test

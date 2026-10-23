@@ -1,7 +1,9 @@
 package com.jordansamhi.androspecter.instrumentation;
 
 import com.jordansamhi.androspecter.SootUtils;
-import com.jordansamhi.androspecter.files.LibrariesManager;
+import com.jordansamhi.androspecter.analysis.AnalysisContext;
+import com.jordansamhi.androspecter.inspection.Inspection;
+import com.jordansamhi.androspecter.inspection.LibraryFilter;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
@@ -37,14 +39,19 @@ import java.util.function.Consumer;
  */
 
 /**
- * Singleton class for instrumenting SootMethods to add log statements
+ * Instance-owned logging transformations. New instances apply their operations explicitly and do not register
+ * global Soot packs. The deprecated {@link #v()} adapter retains the legacy pack-based workflow.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
-public class Logger {
+public class Logger implements Transformation {
 
     private final SootUtils su;
     private final Scene scene;
+    private final Thread ownerThread;
+    private final AnalysisContext context;
+    private final InstrumentationOptions configuration;
+    private final List<BodyStep> steps = new ArrayList<>();
 
     private static Logger instance;
 
@@ -52,11 +59,28 @@ public class Logger {
     private String targetPackage;
 
     /**
-     * Private constructor to prevent external instantiation.
+     * Legacy pack-based instance.
      */
     private Logger() {
+        this(null, InstrumentationOptions.builder().classes(clazz -> true)
+                .libraryFilter(LibraryFilter.knownLibraries()).build(), true);
+    }
+
+    public Logger(AnalysisContext context) {
+        this(context, InstrumentationOptions.builder().build());
+    }
+
+    public Logger(AnalysisContext context, InstrumentationOptions options) {
+        this(Objects.requireNonNull(context, "context"), options, false);
+    }
+
+    private Logger(AnalysisContext context, InstrumentationOptions options, boolean legacy) {
+        if (!legacy) context.checkValid();
         su = new SootUtils();
         scene = Scene.v();
+        ownerThread = Thread.currentThread();
+        this.context = context;
+        configuration = Objects.requireNonNull(options, "options");
     }
 
     /**
@@ -65,10 +89,12 @@ public class Logger {
      *
      * @return the singleton instance of Instrumenter.
      */
+    @Deprecated
     public static synchronized Logger v() {
         if (instance == null || instance.scene != Scene.v()) {
             instance = new Logger();
         }
+        instance.checkValid();
         LogCheckerClass.v().generateClass();
         return instance;
     }
@@ -79,19 +105,8 @@ public class Logger {
      * @param targetPackage The package name to target for instrumentation.
      */
     public void setTargetPackage(String targetPackage) {
+        checkValid();
         this.targetPackage = targetPackage;
-    }
-
-    /**
-     * Checks if the method's declaring class is within the target package.
-     *
-     * @param sm The SootMethod instance.
-     * @return true if the class is within the target package, false otherwise.
-     */
-    private boolean isTargetPackage(SootMethod sm) {
-        String packageName = sm.getDeclaringClass().getPackageName();
-        return targetPackage.isEmpty() || packageName.equals(targetPackage)
-                || packageName.startsWith(targetPackage + ".");
     }
 
     /**
@@ -100,13 +115,87 @@ public class Logger {
      * @param phaseName The name of the phase during which this transformation should be applied.
      * @param logic     The logic to execute during the transformation, encapsulated as a Consumer of Body.
      */
-    private void addTransformation(String phaseName, Consumer<Body> logic) {
-        PackManager.v().getPack("jtp").add(new Transform(phaseName, new BodyTransformer() {
-            @Override
-            protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
-                logic.accept(b);
-            }
-        }));
+    private void addTransformation(String phaseName, boolean includeLibraries, Consumer<Body> logic) {
+        checkValid();
+        steps.add(new BodyStep(includeLibraries, logic));
+        if (context == null) {
+            PackManager.v().getPack("jtp").add(new Transform(phaseName, new BodyTransformer() {
+                @Override
+                protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
+                    checkValid();
+                    if (acceptsMethod(b.getMethod()) && (includeLibraries || !isLibrary(b.getMethod().getDeclaringClass()))) {
+                        logic.accept(b);
+                        checkValid();
+                    }
+                }
+            }));
+        }
+    }
+
+    private void checkValid() {
+        if (context != null) context.checkValid();
+        if (Thread.currentThread() != ownerThread || scene != Scene.v()) {
+            throw new IllegalStateException("Logger must be used on its owning thread and Soot scene");
+        }
+    }
+
+    private boolean acceptsClass(SootClass clazz) {
+        checkValid();
+        if (clazz.getName().equals(Constants.LOG_CHECKER_CLASS)) return false;
+        boolean accepted = configuration.classFilter().test(clazz);
+        checkValid();
+        if (!accepted) return false;
+        String packageName = clazz.getPackageName();
+        return targetPackage == null || targetPackage.isEmpty() || packageName.equals(targetPackage)
+                || packageName.startsWith(targetPackage + ".");
+    }
+
+    private boolean acceptsMethod(SootMethod method) {
+        if (!acceptsClass(method.getDeclaringClass())) return false;
+        boolean accepted = configuration.methodFilter().test(method);
+        checkValid();
+        return accepted;
+    }
+
+    private boolean isLibrary(SootClass clazz) {
+        checkValid();
+        boolean library = configuration.libraryFilter().isLibrary(clazz);
+        checkValid();
+        return library;
+    }
+
+    private static final class BodyStep {
+        private final boolean includeLibraries;
+        private final Consumer<Body> action;
+
+        private BodyStep(boolean includeLibraries, Consumer<Body> action) {
+            this.includeLibraries = includeLibraries;
+            this.action = action;
+        }
+    }
+
+    /** Applies only this instance's registered operations, in order, to the bound analysis. */
+    @Override
+    public void apply(AnalysisContext context) {
+        Objects.requireNonNull(context, "context").checkValid();
+        checkValid();
+        if (this.context == null || !this.context.id().equals(context.id())) {
+            throw new IllegalArgumentException("Logger must be applied with the analysis context supplied to its constructor");
+        }
+        for (BodyStep step : List.copyOf(steps)) {
+            Inspection.builder()
+                    .classes(this::acceptsClass)
+                    .classes(clazz -> step.includeLibraries || !isLibrary(clazz))
+                    .methods(this::acceptsMethod)
+                    .onMethod(method -> {
+                        if (!method.isConcrete()) return;
+                        Body body = method.retrieveActiveBody();
+                        checkValid();
+                        step.action.accept(body);
+                        checkValid();
+                        body.validate();
+                    }).build().run(context);
+        }
     }
 
     /**
@@ -124,10 +213,9 @@ public class Logger {
      */
     public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
 
-        // Check if the method's declaring class is within the target package, if specified
-        if (targetPackage != null && !isTargetPackage(b.getMethod())) {
-            return;
-        }
+        checkValid();
+        if (!acceptsMethod(b.getMethod())) return;
+        LogCheckerClass.v().generateClass();
 
         // Not sure why but some methods with return type set as "void"
         // do not have a return statement in Jimple, probably a bug in Soot
@@ -217,8 +305,9 @@ public class Logger {
      * @param messageToLog The message to be logged.
      */
     public void addLogToMethod(SootMethod sm, String tagToLog, String messageToLog) {
+        checkValid();
         if (sm != null) {
-            if (sm.isConcrete()) {
+            if (acceptsMethod(sm) && sm.isConcrete()) {
                 Body b = sm.retrieveActiveBody();
                 JimpleBody jb = (JimpleBody) b;
                 Chain<Unit> units = b.getUnits();
@@ -237,9 +326,9 @@ public class Logger {
      *                         If false, only application methods will be logged.
      */
     public void logAllMethods(String tagToLog, boolean includeLibraries) {
-        addTransformation("jtp.methodsLogger", b -> {
+        addTransformation("jtp.methodsLogger", includeLibraries, b -> {
             SootMethod sm = b.getMethod();
-            if (!includeLibraries && LibrariesManager.v().isLibrary(sm.getDeclaringClass())) {
+            if (!includeLibraries && isLibrary(sm.getDeclaringClass())) {
                 return;
             }
             if (this.isLogCheckerClass(sm)) {
@@ -271,11 +360,11 @@ public class Logger {
      *                         If false, only application class constructors will be logged.
      */
     public void logAllClasses(String tagToLog, boolean includeLibraries) {
-        addTransformation("jtp.classesLogger", b -> {
+        addTransformation("jtp.classesLogger", includeLibraries, b -> {
             if (this.isLogCheckerClass(b.getMethod())) {
                 return;
             }
-            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+            if (!includeLibraries && isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             SootMethod sm = b.getMethod();
@@ -298,11 +387,11 @@ public class Logger {
      */
 
     public void logAllMethodCalls(String tagToLog, boolean includeLibraries) {
-        addTransformation("jtp.methodCallsLogger", b -> {
+        addTransformation("jtp.methodCallsLogger", includeLibraries, b -> {
             if (this.isLogCheckerClass(b.getMethod())) {
                 return;
             }
-            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+            if (!includeLibraries && isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             Chain<Unit> units = b.getUnits();
@@ -340,8 +429,8 @@ public class Logger {
      *                         If false, only methods in application Android components will be logged.
      */
     private void logAndroidComponent(String tagToLog, String phaseName, String componentType, Set<String> methods, boolean includeLibraries) {
-        addTransformation(phaseName, b -> {
-            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+        addTransformation(phaseName, includeLibraries, b -> {
+            if (!includeLibraries && isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             SootMethod sm = b.getMethod();
@@ -446,8 +535,8 @@ public class Logger {
      *                         If false, only executable statements in application methods will be logged.
      */
     public void logAllStatements(String tagToLog, boolean includeLibraries) {
-        addTransformation("jtp.statementsLogger", b -> {
-            if (!includeLibraries && LibrariesManager.v().isLibrary(b.getMethod().getDeclaringClass())) {
+        addTransformation("jtp.statementsLogger", includeLibraries, b -> {
+            if (!includeLibraries && isLibrary(b.getMethod().getDeclaringClass())) {
                 return;
             }
             if (this.isLogCheckerClass(b.getMethod())) {
@@ -481,7 +570,13 @@ public class Logger {
      * Executes the Soot packs to perform code instrumentation.
      */
     public void instrument() {
-        PackManager.v().runPacks();
+        checkValid();
+        if (context == null) {
+            PackManager.v().runPacks();
+        } else {
+            apply(context);
+        }
+        checkValid();
     }
 
     /**
@@ -489,8 +584,9 @@ public class Logger {
      * when loading the app into soot with set_output_format and set_output_dir
      */
     public void exportNewApk() {
-        //TODO: check file existence
+        checkValid();
         PackManager.v().writeOutput();
+        checkValid();
     }
 
     /**
@@ -499,9 +595,10 @@ public class Logger {
      * @param path The directory path where the APK will be exported.
      */
     public void exportNewApk(String path) {
-        //TODO: check file existence
+        checkValid();
         Options.v().set_output_format(Options.output_format_dex);
         Options.v().set_output_dir(path);
         PackManager.v().writeOutput();
+        checkValid();
     }
 }

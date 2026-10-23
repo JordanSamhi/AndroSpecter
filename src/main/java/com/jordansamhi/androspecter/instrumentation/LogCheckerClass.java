@@ -1,6 +1,5 @@
 package com.jordansamhi.androspecter.instrumentation;
 
-import com.jordansamhi.androspecter.SootUtils;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.*;
 import soot.jimple.*;
@@ -52,6 +51,13 @@ public class LogCheckerClass {
             }
             Scene.v().removeClass(existing);
         }
+        resolveRuntimeClass(Constants.JAVA_LANG_OBJECT, Constants.SUB_SIG_INIT);
+        resolveRuntimeClass(Constants.JAVA_LANG_STRING);
+        resolveRuntimeClass(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_ADD,
+                Constants.SUB_SIG_JAVA_UTIL_SET_CONTAINS);
+        resolveRuntimeClass(Constants.JAVA_UTIL_HASHSET, Constants.SUB_SIG_INIT);
+        resolveRuntimeClass(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
+        resolveRuntimeClass("java.lang.Throwable");
         this.clazz = new SootClass(Constants.LOG_CHECKER_CLASS, Modifier.PUBLIC);
         this.clazz.setSuperclass(Scene.v().getSootClass(Constants.JAVA_LANG_OBJECT));
         SootField sf = new SootField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET), Modifier.PRIVATE | Modifier.STATIC | Modifier.FINAL);
@@ -65,12 +71,46 @@ public class LogCheckerClass {
         this.generateLogMethod();
     }
 
+    /** Resolve only missing or incomplete dependencies, preserving already populated synthetic/test scenes. */
+    private void resolveRuntimeClass(String name, String... requiredMethods) {
+        SootClass runtimeClass = Scene.v().getSootClassUnsafe(name, false);
+        boolean needsResolution = runtimeClass == null || runtimeClass.resolvingLevel() < SootClass.SIGNATURES;
+        if (!needsResolution) {
+            for (String signature : requiredMethods) {
+                if (!runtimeClass.declaresMethod(signature)) needsResolution = true;
+            }
+        }
+        if (needsResolution) {
+            try {
+                runtimeClass = Scene.v().forceResolve(name, SootClass.SIGNATURES);
+            } catch (RuntimeException ex) {
+                throw new IllegalStateException("Cannot resolve logging runtime class " + name
+                        + "; configure Soot's Android platform classpath before instrumentation", ex);
+            }
+        }
+        if (runtimeClass == null || runtimeClass.resolvingLevel() < SootClass.SIGNATURES) {
+            throw new IllegalStateException("Logging runtime class has no resolved signatures: " + name);
+        }
+        for (String signature : requiredMethods) {
+            requireMethodRef(name, signature);
+        }
+    }
+
+    private SootMethodRef requireMethodRef(String className, String signature) {
+        SootClass owner = Scene.v().getSootClassUnsafe(className, false);
+        SootMethod method = owner == null ? null : owner.getMethodUnsafe(signature);
+        if (method == null) {
+            throw new IllegalStateException("Cannot resolve required logging method <" + className + ": "
+                    + signature + ">; configure Soot's Android platform classpath before instrumentation");
+        }
+        return method.makeRef();
+    }
+
     /**
      * Generates the initializer method for the LogCheckerClass.
      * This method is responsible for setting up the initial state of the object.
      */
     private void generateInitMethod() {
-        SootUtils su = new SootUtils();
         SootMethod sm = new SootMethod(Constants.INIT,
                 new ArrayList<Type>(), VoidType.v(), Modifier.PUBLIC);
         JimpleBody body = Jimple.v().newBody(sm);
@@ -81,7 +121,7 @@ public class LogCheckerClass {
         units.add(Jimple.v().newIdentityStmt(thisLocal, Jimple.v().newThisRef(RefType.v(Constants.LOG_CHECKER_CLASS))));
         units.add(Jimple.v().newInvokeStmt(
                 Jimple.v().newSpecialInvokeExpr(thisLocal,
-                        su.getMethodRef(Constants.JAVA_LANG_OBJECT, Constants.SUB_SIG_INIT))));
+                        requireMethodRef(Constants.JAVA_LANG_OBJECT, Constants.SUB_SIG_INIT))));
         units.add(Jimple.v().newReturnVoidStmt());
         this.clazz.addMethod(sm);
         body.validate();
@@ -92,7 +132,6 @@ public class LogCheckerClass {
      * This method is responsible for initializing any static fields or performing other static initialization tasks.
      */
     private void generateClInitMethod() {
-        SootUtils su = new SootUtils();
         SootMethod sm = new SootMethod(Constants.CLINIT,
                 new ArrayList<Type>(), VoidType.v(), Modifier.STATIC);
         JimpleBody body = Jimple.v().newBody(sm);
@@ -104,7 +143,7 @@ public class LogCheckerClass {
         units.add(Jimple.v().newAssignStmt(set, Jimple.v().newNewExpr(RefType.v(Constants.JAVA_UTIL_HASHSET))));
         units.add(Jimple.v().newInvokeStmt(
                 Jimple.v().newSpecialInvokeExpr(set,
-                        su.getMethodRef(Constants.JAVA_UTIL_HASHSET, Constants.SUB_SIG_INIT))));
+                        requireMethodRef(Constants.JAVA_UTIL_HASHSET, Constants.SUB_SIG_INIT))));
         units.add(Jimple.v().newAssignStmt(Jimple.v().newStaticFieldRef(this.clazz.getField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET)).makeRef()), set));
         units.add(Jimple.v().newReturnVoidStmt());
         this.clazz.addMethod(sm);
@@ -119,7 +158,6 @@ public class LogCheckerClass {
      * The dynamically generated method takes a single String parameter representing the log message to be added.
      */
     private void generateAddLogMethod() {
-        SootUtils su = new SootUtils();
         List<Type> params = new ArrayList<>();
         params.add(RefType.v(Constants.JAVA_LANG_STRING));
         SootMethod sm = new SootMethod(Constants.ADD_LOG,
@@ -136,7 +174,7 @@ public class LogCheckerClass {
         units.add(Jimple.v().newAssignStmt(logs, Jimple.v().newStaticFieldRef(this.clazz.getField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET)).makeRef())));
         units.add(Jimple.v().newInvokeStmt(
                 Jimple.v().newInterfaceInvokeExpr(logs,
-                        su.getMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_ADD), log)));
+                        requireMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_ADD), log)));
         units.add(Jimple.v().newReturnVoidStmt());
         synchronizeBody(body);
         this.clazz.addMethod(sm);
@@ -152,7 +190,6 @@ public class LogCheckerClass {
      * It returns a boolean value indicating whether the log message is already in the log set.
      */
     private void generateAlreadyLoggedMethod() {
-        SootUtils su = new SootUtils();
         List<Type> params = new ArrayList<>();
         params.add(RefType.v(Constants.JAVA_LANG_STRING));
         SootMethod sm = new SootMethod(Constants.ALREADY_LOGGED,
@@ -171,7 +208,7 @@ public class LogCheckerClass {
         units.add(Jimple.v().newAssignStmt(logs, Jimple.v().newStaticFieldRef(this.clazz.getField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET)).makeRef())));
         units.add(Jimple.v().newAssignStmt(bool,
                 Jimple.v().newInterfaceInvokeExpr(logs,
-                        su.getMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_CONTAINS), log)));
+                        requireMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_CONTAINS), log)));
         units.add(Jimple.v().newReturnStmt(bool));
         synchronizeBody(body);
         this.clazz.addMethod(sm);
@@ -187,7 +224,6 @@ public class LogCheckerClass {
      * The dynamically generated method takes two parameters: a String representing the log message and another String for the tag.
      */
     private void generateLogMethod() {
-        SootUtils su = new SootUtils();
         List<Type> params = new ArrayList<>();
         params.add(RefType.v(Constants.JAVA_LANG_STRING));
         params.add(RefType.v(Constants.JAVA_LANG_STRING));
@@ -208,19 +244,19 @@ public class LogCheckerClass {
 
         List<Value> paramsAlreadyLogged = new ArrayList<>();
         paramsAlreadyLogged.add(log);
-        units.add(Jimple.v().newAssignStmt(bool, Jimple.v().newStaticInvokeExpr(su.getMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_ALREADY_LOGGED), paramsAlreadyLogged)));
+        units.add(Jimple.v().newAssignStmt(bool, Jimple.v().newStaticInvokeExpr(requireMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_ALREADY_LOGGED), paramsAlreadyLogged)));
         Value condition = Jimple.v().newNeExpr(bool, IntConstant.v(0));
         IfStmt is = Jimple.v().newIfStmt(condition, (Unit) null);
         units.add(is);
 
-        SootMethodRef logMethodRef = su.getMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
+        SootMethodRef logMethodRef = requireMethodRef(Constants.ANDROID_UTIL_LOG, Constants.LOG_D);
         List<Value> paramsLog = new ArrayList<>();
         paramsLog.add(tag);
         paramsLog.add(log);
         Unit logUnit = Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(logMethodRef, paramsLog));
 
         units.add(logUnit);
-        units.add(Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(su.getMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_ADD_LOG), paramsAlreadyLogged)));
+        units.add(Jimple.v().newInvokeStmt(Jimple.v().newStaticInvokeExpr(requireMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_ADD_LOG), paramsAlreadyLogged)));
         Unit ret = Jimple.v().newReturnVoidStmt();
         units.add(ret);
         is.setTarget(ret);

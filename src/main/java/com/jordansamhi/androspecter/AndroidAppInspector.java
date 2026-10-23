@@ -1,17 +1,15 @@
 package com.jordansamhi.androspecter;
 
+import com.jordansamhi.androspecter.analysis.AnalysisContext;
+import com.jordansamhi.androspecter.inspection.Inspection;
 import soot.*;
-import soot.util.Chain;
-
-import java.util.Iterator;
-import java.util.ArrayList;
 
 /**
- * Abstract class to inspect Android classes, methods, and statements.
- * Implement the abstract methods to define custom actions for inspection.
+ * Legacy visitor adapter. Prefer {@link Inspection} to register only the callbacks and filters needed.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
+@Deprecated
 public abstract class AndroidAppInspector {
 
     private boolean examineClasses = true;
@@ -23,7 +21,7 @@ public abstract class AndroidAppInspector {
      *
      * @param sc The SootClass to be examined.
      */
-    public abstract void examineClass(SootClass sc);
+    public void examineClass(SootClass sc) {}
 
     /**
      * Examines the specified SootMethod within a SootClass.
@@ -31,7 +29,7 @@ public abstract class AndroidAppInspector {
      * @param sc The SootClass containing the SootMethod.
      * @param sm The SootMethod to be examined.
      */
-    public abstract void examineMethod(SootClass sc, SootMethod sm);
+    public void examineMethod(SootClass sc, SootMethod sm) {}
 
     /**
      * Examines the specified statement (Unit) within a SootMethod of a SootClass.
@@ -40,7 +38,7 @@ public abstract class AndroidAppInspector {
      * @param sm The SootMethod containing the statement (Unit).
      * @param u  The statement (Unit) to be examined.
      */
-    public abstract void examineStatement(SootClass sc, SootMethod sm, Unit u);
+    public void examineStatement(SootClass sc, SootMethod sm, Unit u) {}
 
     /**
      * Sets the criteria for examination.
@@ -59,63 +57,22 @@ public abstract class AndroidAppInspector {
      * Starts the inspection process, examining classes, methods, and statements as per the criteria.
      */
     public void run() {
-        Chain<SootClass> classes = Scene.v().getClasses();
-        Iterator<SootClass> classIterator = classes.snapshotIterator();
-        while (classIterator.hasNext()) {
-            SootClass sc = classIterator.next();
-            processClass(sc);
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            runIn(context);
         }
     }
 
     /**
-     * Processes a SootClass, examining it and its methods and statements as per the criteria.
+     * Uses an existing context, including its cancellation and stale-scene checks.
      *
-     * @param sc The SootClass to process.
+     * @param context the current analysis context
      */
-    private void processClass(SootClass sc) {
-        if (examineClasses) {
-            examineClass(sc);
-        }
-        if (!examineMethods && !examineStatements) {
-            return;
-        }
-        Iterator<SootMethod> methodIterator = new ArrayList<>(sc.getMethods()).iterator();
-        while (methodIterator.hasNext()) {
-            SootMethod sm = methodIterator.next();
-            processMethod(sc, sm);
-        }
-    }
-
-    /**
-     * Processes a SootMethod, examining it and its statements as per the criteria.
-     *
-     * @param sc The SootClass containing the SootMethod.
-     * @param sm The SootMethod to process.
-     */
-    private void processMethod(SootClass sc, SootMethod sm) {
-        if (examineMethods) {
-            examineMethod(sc, sm);
-        }
-        if (examineStatements && sm.isConcrete()) {
-            processStatements(sc, sm, sm.retrieveActiveBody());
-        }
-    }
-
-    /**
-     * Processes the statements of a method body as per the criteria.
-     *
-     * @param sc   The SootClass containing the SootMethod.
-     * @param sm   The SootMethod containing the Body.
-     * @param body The Body containing the statements to process.
-     */
-    private void processStatements(SootClass sc, SootMethod sm, Body body) {
-        Chain<Unit> units = body.getUnits();
-        Iterator<Unit> iterator = units.snapshotIterator();
-        while (iterator.hasNext()) {
-            Unit u = iterator.next();
-            if (examineStatements) {
-                examineStatement(sc, sm, u);
-            }
-        }
+    public void runIn(AnalysisContext context) {
+        Inspection.Builder inspection = Inspection.builder();
+        if (examineClasses) inspection.onClass(this::examineClass);
+        if (examineMethods) inspection.onMethod(method -> examineMethod(method.getDeclaringClass(), method));
+        if (examineStatements) inspection.onStatement((method, unit) ->
+                examineStatement(method.getDeclaringClass(), method, unit));
+        inspection.build().run(context);
     }
 }

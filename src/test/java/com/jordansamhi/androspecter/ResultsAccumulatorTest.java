@@ -7,8 +7,24 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ResultsAccumulatorTest {
+
+    @Test
+    void instanceMetricsAndSnapshotsDoNotShareMutableState() {
+        ResultsAccumulator first = new ResultsAccumulator();
+        ResultsAccumulator second = new ResultsAccumulator();
+        first.setAppName("first");
+        first.setMetric("calls", 4);
+        var snapshot = first.snapshot();
+        first.incrementMetric("calls");
+        first.reset();
+        assertEquals(4, snapshot.metrics().get("calls"));
+        assertEquals("first", snapshot.appName());
+        assertEquals(0, second.getMetric("calls"));
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.metrics().put("calls", 9));
+    }
 
     @BeforeEach
     @AfterEach

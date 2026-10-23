@@ -3,13 +3,19 @@ package com.jordansamhi.androspecter;
 import java.util.SortedMap;
 import java.util.StringJoiner;
 import java.util.TreeMap;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Singleton class that accumulates results metrics.
+ * Instance-owned metrics. Prefer a new instance for each analysis.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class ResultsAccumulator {
+    private static final Logger LOG = LoggerFactory.getLogger(ResultsAccumulator.class);
 
     /**
      * Singleton instance.
@@ -27,9 +33,9 @@ public class ResultsAccumulator {
     private final SortedMap<String, Integer> metrics;
 
     /**
-     * Private constructor to enforce singleton usage.
+     * Creates independent metrics for one analysis.
      */
-    private ResultsAccumulator() {
+    public ResultsAccumulator() {
         this.appName = "";
         this.metrics = new TreeMap<>();
     }
@@ -39,6 +45,7 @@ public class ResultsAccumulator {
      *
      * @return singleton instance of ResultsAccumulator
      */
+    @Deprecated
     public static ResultsAccumulator v() {
         return instance;
     }
@@ -66,7 +73,7 @@ public class ResultsAccumulator {
      * @param appName the new application name
      */
     public synchronized void setAppName(String appName) {
-        this.appName = appName;
+        this.appName = Objects.requireNonNull(appName, "appName");
     }
 
     /**
@@ -103,7 +110,7 @@ public class ResultsAccumulator {
      * Method to print all the metrics in a vector form.
      */
     public synchronized void printVectorResults() {
-        System.out.println(getVectorResults());
+        LOG.info("{}", getVectorResults());
     }
 
     /**
@@ -134,11 +141,18 @@ public class ResultsAccumulator {
      * Prints all metrics in ascending metric-name order.
      */
     public synchronized void printResults() {
-        System.out.println("Results:");
-        System.out.printf(" - App name: %s%n", this.getAppName());
+        LOG.info("Results for {}: {}", appName, metrics);
+    }
 
-        for (String metric : metrics.keySet()) {
-            System.out.printf(" - Number of %s: %s%n", metric, metrics.get(metric));
+    /** Returns an immutable, detached copy in alphabetical metric-name order. */
+    public synchronized Snapshot snapshot() {
+        return new Snapshot(appName, metrics);
+    }
+
+    public record Snapshot(String appName, Map<String, Integer> metrics) {
+        public Snapshot {
+            Objects.requireNonNull(appName, "appName");
+            metrics = Collections.unmodifiableMap(new TreeMap<>(metrics));
         }
     }
 }
