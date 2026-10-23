@@ -2,7 +2,17 @@ package com.jordansamhi.androspecter;
 
 import com.jordansamhi.androspecter.config.SootConfig;
 import com.jordansamhi.androspecter.printers.Writer;
+import com.jordansamhi.androspecter.result.AnalysisStatus;
+import com.jordansamhi.androspecter.result.TaintAnalysisResult;
+import com.jordansamhi.androspecter.result.TaintEndpoint;
+import com.jordansamhi.androspecter.result.TaintFinding;
+import com.jordansamhi.androspecter.result.TaintPathStep;
+import com.jordansamhi.androspecter.result.TaintResultFormatter;
 import soot.G;
+import soot.Scene;
+import soot.SootClass;
+import soot.SootMethod;
+import soot.Unit;
 import soot.jimple.Stmt;
 import soot.jimple.infoflow.InfoflowConfiguration;
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
@@ -13,13 +23,21 @@ import soot.jimple.infoflow.config.IInfoflowConfig;
 import soot.jimple.infoflow.results.InfoflowResults;
 import soot.jimple.infoflow.results.ResultSinkInfo;
 import soot.jimple.infoflow.results.ResultSourceInfo;
-import soot.jimple.infoflow.solver.cfg.InfoflowCFG;
+import soot.jimple.infoflow.results.AbstractResultSourceSinkInfo;
 
 import java.io.File;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.function.Consumer;
 
 /*-
  * #%L
@@ -56,7 +74,9 @@ public class FlowdroidUtils {
     private String packageName;
     private boolean manifestRead;
     private final String apkPath;
-    private SetupApplication sa;
+    private volatile SetupApplication sa;
+    private volatile boolean initialized;
+    private volatile boolean abortRequested;
 
     public FlowdroidUtils(String apkPath) {
         this.apkPath = Objects.requireNonNull(apkPath, "apkPath");
@@ -71,8 +91,20 @@ public class FlowdroidUtils {
      * @return The SetupApplication object representing the analysis.
      */
     public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo) {
+        return initializeFlowdroid(platformPath, config, callGraphAlgo, configuration -> { });
+    }
+
+    /**
+     * Initializes an analysis with a customizer applied after defaults and before call graph construction.
+     * The customizer may configure FlowDroid's callback, data-flow, and reconstruction timeouts.
+     */
+    public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo,
+                                               Consumer<InfoflowAndroidConfiguration> customizer) {
+        this.initialized = false;
         this.sa = null;
+        this.abortRequested = false;
         Objects.requireNonNull(platformPath, "platformPath");
+        Objects.requireNonNull(customizer, "customizer");
         InfoflowConfiguration.CallgraphAlgorithm cgAlgo;
         switch (callGraphAlgo == null ? "CHA" : callGraphAlgo.trim().toUpperCase(Locale.ROOT)) {
             case "CHA": cgAlgo = InfoflowConfiguration.CallgraphAlgorithm.CHA; break;
@@ -87,17 +119,26 @@ public class FlowdroidUtils {
         ifac.getAnalysisFileConfig().setTargetAPKFile(new File(this.apkPath));
         ifac.setCodeEliminationMode(InfoflowConfiguration.CodeEliminationMode.NoCodeElimination);
         ifac.getPathConfiguration().setPathReconstructionMode(InfoflowConfiguration.PathReconstructionMode.Precise);
+        ifac.setCallgraphAlgorithm(cgAlgo);
+        customizer.accept(ifac);
         SetupApplication sa = createSetupApplication(ifac);
         if (config == null) {
             sa.setSootConfig(new SootConfig());
         } else {
             sa.setSootConfig(config);
         }
-        sa.getConfig().setCallgraphAlgorithm(cgAlgo);
-        sa.constructCallgraph();
-        ifac.setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
         this.sa = sa;
-        return sa;
+        try {
+            checkInitializationCancellation(sa);
+            sa.constructCallgraph();
+            checkInitializationCancellation(sa);
+            ifac.setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
+            this.initialized = true;
+            return sa;
+        } catch (RuntimeException | Error failure) {
+            this.sa = null;
+            throw failure;
+        }
     }
 
     SetupApplication createSetupApplication(InfoflowAndroidConfiguration configuration) {
@@ -105,76 +146,201 @@ public class FlowdroidUtils {
     }
 
     /**
-     * Runs the taint analysis on the provided set of sources and sinks.
-     * <p>
-     * The method requires an initialized SetupApplication. Failed or incomplete analyses throw
-     * an IllegalStateException instead of being reported as an absence of flows.
-     * It then runs the Infoflow analysis and stores the results in a set of strings where each string represents a leak path
-     * from a source to a sink in the format:
-     * "Found leak:
-     * - From [source]
-     * - Detailed path:
-     * [statement] =&gt; in method: [method]
-     * - To [sink]"
-     * <p>
-     * If no flow is found, a warning message is printed.
-     *
-     * @param sources the set of sources to consider in the taint analysis
-     * @param sinks   the set of sinks to consider in the taint analysis
-     * @return a set of strings, each string describing a path from a source to a sink
-     * @throws IllegalStateException if setup is missing or the analysis fails or terminates early
+     * Requests best-effort cancellation of the current analysis. FlowDroid cannot necessarily
+     * interrupt every callback or call graph phase immediately; callers must keep ownership
+     * of Soot until the operation has returned. Reinitialization clears the cancellation request.
+     */
+    public void abortAnalysis() {
+        abortRequested = true;
+        SetupApplication current = sa;
+        if (current != null) {
+            current.abortAnalysis();
+        }
+    }
+
+    private void checkInitializationCancellation(SetupApplication application) {
+        if (abortRequested || Thread.currentThread().isInterrupted()) {
+            application.abortAnalysis();
+            throw new CancellationException("FlowDroid initialization cancelled");
+        }
+    }
+
+    /**
+     * Runs taint analysis and returns the legacy textual reports. Failed, timed-out, or
+     * cancelled analyses throw instead of being mistaken for successful empty analyses.
+     * Use runTaintAnalysisResult to inspect partial findings and structured diagnostics.
      */
     public Set<String> runTaintAnalysis(Set<AndroidMethod> sources, Set<AndroidMethod> sinks) {
-        if (this.sa == null) {
-            throw new IllegalStateException("The SetupApplication has not been initialized.\n" +
-                    "First call the initializeFlowdroid method.");
+        AnalysisExecution execution = executeTaintAnalysis(sources, sinks, UUID.randomUUID());
+        try {
+            Set<String> reports = TaintResultFormatter.format(execution.result());
+            if (reports.isEmpty()) {
+                Writer.v().pwarning("No Flow found.");
+            }
+            return new LinkedHashSet<>(reports);
+        } catch (IllegalStateException failure) {
+            if (execution.failure() != null) {
+                failure.initCause(execution.failure());
+            }
+            throw failure;
+        }
+    }
+
+    /** Runs an analysis with a newly generated identifier and returns detached immutable data. */
+    public TaintAnalysisResult runTaintAnalysisResult(Set<AndroidMethod> sources, Set<AndroidMethod> sinks) {
+        return runTaintAnalysisResult(sources, sinks, UUID.randomUUID());
+    }
+
+    /**
+     * Runs an analysis associated with the caller's identifier. Failed and incomplete results
+     * retain any available findings. Invalid arguments and missing initialization remain programming
+     * errors and throw; runtime analysis failures are represented by FAILED with diagnostics.
+     */
+    public TaintAnalysisResult runTaintAnalysisResult(Set<AndroidMethod> sources, Set<AndroidMethod> sinks,
+                                                    UUID analysisId) {
+        return executeTaintAnalysis(sources, sinks, analysisId).result();
+    }
+
+    private AnalysisExecution executeTaintAnalysis(Set<AndroidMethod> sources, Set<AndroidMethod> sinks,
+                                                   UUID analysisId) {
+        SetupApplication application = this.sa;
+        if (!initialized || application == null) {
+            throw new IllegalStateException("The SetupApplication has not been initialized.\n"
+                    + "First call the initializeFlowdroid method.");
         }
         Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(sinks, "sinks");
+        Objects.requireNonNull(analysisId, "analysisId");
+        if (abortRequested || Thread.currentThread().isInterrupted()) {
+            return new AnalysisExecution(new TaintAnalysisResult(analysisId, AnalysisStatus.CANCELLED,
+                    List.of(), List.of("Analysis cancelled before execution")), null);
+        }
         InfoflowResults results;
         try {
-            results = this.sa.runInfoflow(sources, sinks);
-        } catch (Exception e) {
-            throw new IllegalStateException("FlowDroid taint analysis failed for " + this.apkPath, e);
+            results = application.runInfoflow(sources, sinks);
+        } catch (Exception failure) {
+            boolean cancelled = abortRequested || Thread.currentThread().isInterrupted()
+                    || failure instanceof CancellationException || failure instanceof InterruptedException;
+            if (failure instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return new AnalysisExecution(new TaintAnalysisResult(analysisId,
+                    cancelled ? AnalysisStatus.CANCELLED : AnalysisStatus.FAILED, List.of(),
+                    List.of("FlowDroid taint analysis failed for " + apkPath + ": " + failure)), failure);
         }
+        List<String> diagnostics = new ArrayList<>();
+        boolean cancelled = abortRequested || Thread.currentThread().isInterrupted();
         if (results == null) {
-            throw new IllegalStateException("FlowDroid returned no analysis result for " + this.apkPath);
+            diagnostics.add("FlowDroid returned no analysis result for " + apkPath);
+            return new AnalysisExecution(new TaintAnalysisResult(analysisId,
+                    cancelled ? AnalysisStatus.CANCELLED : AnalysisStatus.FAILED, List.of(), diagnostics), null);
         }
-        if (results.getExceptions() != null && !results.getExceptions().isEmpty()) {
-            throw new IllegalStateException("FlowDroid reported analysis errors: " + results.getExceptions());
+        if (results.getExceptions() != null) {
+            diagnostics.addAll(results.getExceptions());
         }
-        if (results.getTerminationState() != InfoflowResults.TERMINATION_SUCCESS) {
-            throw new IllegalStateException("FlowDroid analysis did not complete; termination state: "
-                    + results.getTerminationState());
+        int termination = results.getTerminationState();
+        AnalysisStatus status;
+        if (cancelled) {
+            status = AnalysisStatus.CANCELLED;
+            diagnostics.add("Analysis cancellation requested");
+        } else if (results.wasAbortedTimeout()) {
+            status = AnalysisStatus.TIMED_OUT;
+        } else if (termination != InfoflowResults.TERMINATION_SUCCESS || !diagnostics.isEmpty()) {
+            status = AnalysisStatus.FAILED;
+        } else {
+            status = AnalysisStatus.SUCCESS;
         }
-        Set<String> resultList = new HashSet<>();
-        if (results.isEmpty()) {
-            Writer.v().pwarning("No Flow found.");
-            return resultList;
+        if (termination != InfoflowResults.TERMINATION_SUCCESS) {
+            diagnostics.add("FlowDroid termination state: " + termination);
         }
-        InfoflowCFG icfg = null;
-        for (ResultSinkInfo sink : results.getResults().keySet()) {
-            for (ResultSourceInfo source : results.getResults().get(sink)) {
-                StringBuilder resultBuilder = new StringBuilder("Found leak: \n");
-                resultBuilder.append("  - From ").append(source).append("\n");
-                Stmt[] path = source.getPath();
-                if (path == null || path.length == 0) {
-                    resultBuilder.append("    - Detailed path unavailable.\n");
-                } else {
-                    if (icfg == null) {
-                        icfg = new InfoflowCFG();
-                    }
-                    resultBuilder.append("    - Detailed path:\n");
-                    for (Stmt statement : path) {
-                        resultBuilder.append("       ").append(statement).append(" => in method: ")
-                                .append(icfg.getMethodOf(statement)).append("\n");
+        List<TaintFinding> findings = new ArrayList<>();
+        Exception detachmentFailure = null;
+        try {
+            if (!results.isEmpty()) {
+                Map<Unit, String> owners = activeStatementOwners(results);
+                for (ResultSinkInfo sink : results.getResults().keySet()) {
+                    TaintEndpoint sinkEndpoint = detachEndpoint(sink, owners);
+                    for (ResultSourceInfo source : results.getResults().get(sink)) {
+                        List<TaintPathStep> steps = new ArrayList<>();
+                        Stmt[] path = source.getPath();
+                        if (path != null) {
+                            for (Stmt statement : path) {
+                                steps.add(new TaintPathStep(owners.get(statement), statement.toString()));
+                            }
+                        }
+                        findings.add(new TaintFinding(detachEndpoint(source, owners), sinkEndpoint,
+                                steps, path != null));
                     }
                 }
-                resultBuilder.append("  - To ").append(sink).append("\n");
-                resultList.add(resultBuilder.toString());
+            }
+        } catch (RuntimeException failure) {
+            // Keep already detached findings, but do not report a failed conversion as a complete result.
+            detachmentFailure = failure;
+            diagnostics.add("Could not detach all taint findings: " + failure);
+            if (status == AnalysisStatus.SUCCESS) {
+                status = AnalysisStatus.FAILED;
             }
         }
-        return resultList;
+        findings.sort(Comparator.comparing((TaintFinding finding) -> finding.source().description())
+                .thenComparing(finding -> finding.source().methodSignature(), Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(finding -> finding.sink().description())
+                .thenComparing(finding -> finding.sink().methodSignature(), Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(finding -> finding.path().toString()));
+        return new AnalysisExecution(new TaintAnalysisResult(analysisId, status, findings, diagnostics),
+                detachmentFailure);
+    }
+
+    private Map<Unit, String> activeStatementOwners(InfoflowResults results) {
+        // Index only statements that occur in the result, rather than retaining every body unit.
+        Map<Unit, String> owners = new IdentityHashMap<>();
+        for (ResultSinkInfo sink : results.getResults().keySet()) {
+            if (sink.getStmt() != null) {
+                owners.put(sink.getStmt(), null);
+            }
+            for (ResultSourceInfo source : results.getResults().get(sink)) {
+                if (source.getStmt() != null) {
+                    owners.put(source.getStmt(), null);
+                }
+                if (source.getPath() != null) {
+                    for (Stmt statement : source.getPath()) {
+                        owners.put(statement, null);
+                    }
+                }
+            }
+        }
+        int unresolved = owners.size();
+        for (SootClass clazz : Scene.v().getClasses()) {
+            if (unresolved == 0) {
+                break;
+            }
+            if (clazz.resolvingLevel() < SootClass.SIGNATURES) {
+                continue;
+            }
+            for (SootMethod method : clazz.getMethods()) {
+                if (method.hasActiveBody()) {
+                    for (Unit statement : method.getActiveBody().getUnits()) {
+                        if (owners.containsKey(statement) && owners.get(statement) == null) {
+                            owners.put(statement, method.getSignature());
+                            unresolved--;
+                        }
+                    }
+                }
+            }
+        }
+        return owners;
+    }
+
+    private TaintEndpoint detachEndpoint(AbstractResultSourceSinkInfo endpoint, Map<Unit, String> owners) {
+        Stmt statement = endpoint.getStmt();
+        return new TaintEndpoint(endpoint.toString(), owners.get(statement),
+                statement == null ? null : statement.toString(),
+                statement != null && statement.containsInvokeExpr()
+                        ? statement.getInvokeExpr().getMethodRef().getSignature() : null,
+                endpoint.getAccessPath() == null ? null : endpoint.getAccessPath().toString());
+    }
+
+    // The exception is retained only for the legacy synchronous call's cause, never in the public result.
+    private record AnalysisExecution(TaintAnalysisResult result, Exception failure) {
     }
 
     /**
