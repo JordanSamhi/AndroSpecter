@@ -42,17 +42,15 @@ import java.util.regex.Pattern;
  */
 
 /**
- * A manager for source and sink methods. Prefer a new instance per analysis or SourceSinkConfiguration.
+ * Mutable source/sink definitions initialized from the library's bundled classpath resource.
+ * Prefer a new instance per analysis or {@link SourceSinkConfiguration} for an immutable
+ * configuration. Records use {@code TYPE|signature}, where the case-sensitive type is
+ * {@code SOURCE} or {@code SINK} and the signature uses full Jimple method syntax.
  * <p>
- * This class extends the FileLoader class and is responsible for loading, storing, and providing access to
- * source and sink methods. The sources and sinks are represented as sets of AndroidMethod objects.
- * <p>
- * The sources and sinks are loaded from a file specified by the abstract getFile() method, which must be
- * implemented by any concrete subclass. The file is assumed to contain a collection of strings, each representing
- * a method and its type (source or sink). The method and type are separated by a "|". The type is expected to be
- * either "SOURCE" or "SINK", and the method is expected to be a Jimple signature of the method.
- * <p>
- * The legacy v() accessor retains shared mutable state for compatibility.
+ * Getters expose live mutable sets of mutable {@link AndroidMethod} descriptors, not Soot
+ * methods resolved in a scene. Instances are not thread-safe. The deprecated {@link #v()}
+ * accessor retains shared mutable state for compatibility; synchronized singleton creation
+ * does not make operations on its contents thread-safe.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -78,10 +76,12 @@ public class SourcesSinksManager extends FileLoader {
 
 
     /**
-     * Creates independent source/sink sets initialized from the bundled definitions.
-     * <p>
-     * This constructor initializes the sources and sinks as new HashSets and
-     * then loads sources and sinks by calling the loadSourcesSinks() method.
+     * Creates independent, mutable source/sink sets initialized from the bundled UTF-8 definitions.
+     * This does not read or reuse the legacy singleton's mutable sets.
+     *
+     * @throws IllegalStateException if the bundled classpath resource is missing
+     * @throws UncheckedIOException if the bundled resource cannot be read
+     * @throws IllegalArgumentException if a bundled record is malformed
      */
     public SourcesSinksManager() {
         this(true);
@@ -97,6 +97,17 @@ public class SourcesSinksManager extends FileLoader {
     }
 
 
+    /**
+     * Returns the process-wide legacy manager, creating it from bundled definitions on first use.
+     * Additions, removals, and resets affect all callers sharing this instance.
+     *
+     * @return non-null shared mutable manager
+     * @throws IllegalStateException if initial loading cannot find the bundled resource
+     * @throws UncheckedIOException if initial loading cannot read the bundled resource
+     * @throws IllegalArgumentException if an initially loaded bundled record is malformed
+     * @deprecated use {@link #SourcesSinksManager()} for independent mutable state or
+     *             {@link SourceSinkConfiguration} for immutable definitions
+     */
     @Deprecated
     public static synchronized SourcesSinksManager v() {
         if (instance == null) {
@@ -178,17 +189,17 @@ public class SourcesSinksManager extends FileLoader {
     }
 
     /**
-     * Loads source and sink methods from a given file.
+     * Adds definitions from a UTF-8 file while retaining existing source/sink entries.
+     * Records use {@code SOURCE|<example.Input: java.lang.String read()>} or the corresponding
+     * {@code SINK|...} form. Surrounding whitespace is ignored; blank lines and lines whose
+     * first nonwhitespace character is {@code #} are skipped. Constructors and array types
+     * are accepted in method signatures. Methods are described without loading their classes.
      * <p>
-     * This method parses lines from the file, where each line is assumed to be a string in the format "type|signature".
-     * The "type" is expected to be either "SOURCE" or "SINK", and "signature" is the Jimple signature of the method.
-     * An AndroidMethod object is created from each valid signature and is added to either the sources or sinks collection,
-     * depending on the type.
+     * Definitions are merged only after the entire file has been read and validated. A read
+     * or parse failure leaves the existing sets unchanged; duplicate entries are deduplicated.
      *
-     * Entries are added only after the complete UTF-8 file has been validated.
-     * Blank lines and lines beginning with # are ignored.
-     *
-     * @param file The file containing the source and sink methods' signatures.
+     * @param file non-null file containing source/sink records
+     * @throws NullPointerException if {@code file} is null
      * @throws IllegalArgumentException if a record is malformed, including its file and line number
      * @throws UncheckedIOException if the file cannot be read
      */
@@ -211,7 +222,11 @@ public class SourcesSinksManager extends FileLoader {
     }
 
     /**
-     * Removes custom entries and restores the bundled source/sink definitions.
+     * Clears both live sets and restores the bundled records read when this manager was created.
+     * This does not reread the classpath resource or previously loaded custom files. Existing
+     * references returned by the getters observe the reset because the sets are reused.
+     *
+     * @throws IllegalArgumentException if a retained bundled record is malformed
      */
     public void reset() {
         sources.clear();
@@ -221,18 +236,24 @@ public class SourcesSinksManager extends FileLoader {
 
 
     /**
-     * Returns the set of source methods.
+     * Returns the live mutable source set. Adding or removing descriptors changes this manager;
+     * neither the set nor its mutable descriptors are defensively copied. The descriptors do
+     * not refer to live Soot methods. Avoid mutating a descriptor in a way that changes its
+     * equality/hash value while it is stored in the set.
      *
-     * @return The set of AndroidMethod objects representing source methods.
+     * @return non-null live source descriptors, possibly empty, with no iteration-order guarantee
      */
     public Set<AndroidMethod> getSources() {
         return this.sources;
     }
 
     /**
-     * Returns the set of sink methods.
+     * Returns the live mutable sink set. Adding or removing descriptors changes this manager;
+     * neither the set nor its mutable descriptors are defensively copied. The descriptors do
+     * not refer to live Soot methods. Avoid mutating a descriptor in a way that changes its
+     * equality/hash value while it is stored in the set.
      *
-     * @return The set of AndroidMethod objects representing sink methods.
+     * @return non-null live sink descriptors, possibly empty, with no iteration-order guarantee
      */
     public Set<AndroidMethod> getSinks() {
         return this.sinks;

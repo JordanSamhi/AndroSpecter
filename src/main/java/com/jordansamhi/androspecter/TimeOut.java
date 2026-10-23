@@ -53,6 +53,7 @@ public class TimeOut implements AutoCloseable {
      * token or use {@link #TimeOut(int, Runnable)} to choose what expiration should do.
      *
      * @param n the timeout duration in seconds; if zero, the timeout duration defaults to 60 seconds
+     * @throws IllegalArgumentException if {@code n} is negative
      * @deprecated Use {@link Deadline#after(Duration, Runnable)} or an explicit callback.
      */
     @Deprecated
@@ -63,9 +64,13 @@ public class TimeOut implements AutoCloseable {
     /**
      * Creates an unlaunched timeout with a caller-defined callback. Expiration first signals
      * {@link #cancellationToken()}, then invokes the callback on a daemon thread.
+     * No timer thread is created until {@link #launch()}. The callback should return promptly;
+     * runtime exceptions are logged by the underlying Deadline.
      *
      * @param n duration in seconds; zero retains the legacy default of 60 seconds
      * @param action callback invoked once on expiration
+     * @throws IllegalArgumentException if {@code n} is negative
+     * @throws NullPointerException if {@code action} is null
      */
     public TimeOut(int n, Runnable action) {
         if (n < 0) {
@@ -76,7 +81,11 @@ public class TimeOut implements AutoCloseable {
     }
 
     /**
-     * Launches the timer with the specified timeout duration.
+     * Starts this one-shot timer, counting the configured seconds from this call. A timer
+     * cannot be relaunched, including after expiration or cancellation. Expiration requests
+     * cooperative cancellation; it does not stop a worker or terminate the JVM.
+     *
+     * @throws IllegalStateException if this timer has already been launched or cancelled
      */
     public synchronized void launch() {
         if (cancelled || timer != null) {
@@ -89,7 +98,9 @@ public class TimeOut implements AutoCloseable {
     }
 
     /**
-     * Cancels the currently running timer, if any.
+     * Disarms this timer, including before launch, without signalling its cancellation token.
+     * This method is idempotent and prevents later launch. If expiration has already begun,
+     * it neither waits for nor interrupts the callback, and cannot undo cancellation.
      */
     public synchronized void cancel() {
         this.cancelled = true;
@@ -98,11 +109,20 @@ public class TimeOut implements AutoCloseable {
         }
     }
 
-    /** Read-only token signalled by expiration; cancelling the timer does not signal it. */
+    /**
+     * Returns the read-only token signalled on expiration. Calling {@link #cancel()} or
+     * {@link #close()} only disarms the timer; neither explicitly cancels this token.
+     *
+     * @return the token callers may observe or pass to a cooperative operation
+     */
     public CancellationToken cancellationToken() {
         return cancellation.token();
     }
 
+    /**
+     * Disarms the timer by calling {@link #cancel()}. This does not request operation
+     * cancellation or wait for a callback that has already started.
+     */
     @Override
     public void close() {
         cancel();

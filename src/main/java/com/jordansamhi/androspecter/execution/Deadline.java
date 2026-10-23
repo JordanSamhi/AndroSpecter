@@ -11,7 +11,11 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** A caller-owned deadline that invokes one callback on a daemon thread. */
+/**
+ * A caller-owned deadline that invokes one callback on a daemon thread. Scheduling begins
+ * immediately on creation. Use try-with-resources to disarm the callback when the operation
+ * finishes; this timer neither owns nor waits for the operation being timed.
+ */
 public final class Deadline implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(Deadline.class);
     private final ScheduledExecutorService scheduler;
@@ -43,10 +47,18 @@ public final class Deadline implements AutoCloseable {
      * Schedules a callback after a non-negative duration. To request cancellation, pass
      * {@code source::cancel}. The callback should return promptly. Its runtime exceptions are
      * logged, and its scheduler is always shut down after invocation.
+     * This does not guarantee that a cooperative operation stops at the deadline.
+     * <pre>{@code
+     * try (Deadline deadline = Deadline.after(Duration.ofSeconds(30), source::cancel)) {
+     *     // Run the operation with source.token().
+     * }
+     * }</pre>
      *
      * @param delay duration before the callback; zero schedules it immediately
      * @param action caller-defined response to expiration
      * @return deadline to close when the operation finishes before expiration
+     * @throws NullPointerException if {@code delay} or {@code action} is null
+     * @throws IllegalArgumentException if the delay is negative or cannot be represented in nanoseconds
      */
     public static Deadline after(Duration delay, Runnable action) {
         Objects.requireNonNull(delay, "delay");
@@ -63,12 +75,22 @@ public final class Deadline implements AutoCloseable {
         return new Deadline(nanos, action);
     }
 
-    /** Whether the deadline started invoking its callback. */
+    /**
+     * Tests whether expiration won the race with closure and started invoking its callback.
+     * The value remains true after callback completion or failure. It remains false when
+     * closed before expiration and is safe to query from another thread.
+     *
+     * @return true if callback invocation has begun, not necessarily finished
+     */
     public boolean isExpired() {
         return expired;
     }
 
-    /** Cancels a pending callback; an action already running is allowed to finish. */
+    /**
+     * Disarms a pending callback and shuts down the timer's scheduler. This method is
+     * idempotent and safe to call from another thread. It neither interrupts nor waits for
+     * an action already running, and does not reset {@link #isExpired()} after expiration.
+     */
     @Override
     public void close() {
         pending.set(false);

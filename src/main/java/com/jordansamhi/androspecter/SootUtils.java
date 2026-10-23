@@ -43,16 +43,22 @@ import java.util.*;
  */
 public class SootUtils {
 
+    /**
+     * Creates a utility that operates on the current global Soot scene. It does
+     * not initialize, own, or protect that scene from resets by other code.
+     */
     public SootUtils() {
     }
 
     /**
-     * Returns a SootMethodRef with the given class name and method name.
+     * Looks up a declared method in the current scene by its full sub-signature.
+     * For example, use {@code "void <init>()"} for a no-argument constructor.
+     * Resolution failures are logged through SLF4J and return null.
      *
      * @param className  the name of the class that contains the method
-     * @param methodName the name of the method to return a reference to
-     * @return a SootMethodRef to the SootMethod with the given class and method names
-     * @throws RuntimeException if the method could not be found
+     * @param methodName the method sub-signature, including return type and parameter types
+     * @return a live method reference, or null if the class or method cannot be resolved;
+     *         a successful reference must not be reused after Soot is reset
      */
     public SootMethodRef getMethodRef(String className, String methodName) {
         SootMethod sm;

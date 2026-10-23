@@ -42,6 +42,13 @@ public class SystemManager extends FileLoader {
         super();
     }
 
+    /**
+     * Returns the shared classifier, loading bundled system-package prefixes on first use.
+     *
+     * @return the legacy singleton system-class classifier
+     * @throws IllegalStateException if the bundled prefix resource is missing
+     * @throws java.io.UncheckedIOException if the resource cannot be read
+     */
     public static SystemManager v() {
         if (instance == null) {
             instance = new SystemManager();

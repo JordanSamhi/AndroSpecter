@@ -65,7 +65,16 @@ import java.util.function.Consumer;
  */
 
 /**
- * A utility class for initializing and running Flowdroid analyses on Android apps.
+ * Low-level initialization and taint-analysis helper for FlowDroid Android analyses.
+ * Initialization resets Soot's global state. Callers must exclusively manage that state
+ * throughout initialization, execution, and result detachment; this helper does not detect
+ * external resets or coordinate multiple analyses. Prefer
+ * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis} for a managed lifecycle.
+ * <p>
+ * Apart from {@link #abortAnalysis()}, operations must not run concurrently on this instance.
+ * Returned {@link SetupApplication} objects are live backend objects, whereas
+ * {@link TaintAnalysisResult} values and legacy report strings are detached and remain
+ * usable after Soot is reset.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -78,25 +87,63 @@ public class FlowdroidUtils {
     private volatile boolean initialized;
     private volatile boolean abortRequested;
 
+    /**
+     * Creates a helper for an APK without opening it or initializing Soot.
+     * Path existence and APK contents are checked by the backend when used.
+     *
+     * @param apkPath non-null path to the APK to analyze
+     * @throws NullPointerException if {@code apkPath} is null
+     */
     public FlowdroidUtils(String apkPath) {
         this.apkPath = Objects.requireNonNull(apkPath, "apkPath");
     }
 
     /**
-     * Initializes a Flowdroid analysis on an Android app.
+     * Resets Soot and constructs the APK's Android entry points and call graph with default
+     * FlowDroid options. Code elimination is disabled and precise path reconstruction is enabled.
+     * This is equivalent to the customizer overload with a no-op customizer; see that overload
+     * for lifecycle and cancellation details.
      *
-     * @param platformPath  The path to the directory containing the Android platform.
-     * @param config        The configuration to be used for the analysis, or null to use default configuration.
-     * @param callGraphAlgo The algorithm (CHA, RTA, VTA, or SPARK), case-insensitive; null selects CHA.
-     * @return The SetupApplication object representing the analysis.
+     * @param platformPath non-null Android SDK platforms directory
+     * @param config Soot-options callback, or null to use this library's {@link SootConfig}
+     * @param callGraphAlgo {@code CHA}, {@code RTA}, {@code VTA}, or {@code SPARK}, ignoring
+     *                      surrounding whitespace and case; null selects {@code CHA}
+     * @return live, mutable backend application bound to the current Soot state
+     * @throws NullPointerException if {@code platformPath} is null
+     * @throws IllegalArgumentException if the call graph algorithm is unsupported
+     * @throws CancellationException if cancellation or interruption is observed during initialization
+     * @throws RuntimeException if backend initialization or call graph construction fails
+     * @see #initializeFlowdroid(String, IInfoflowConfig, String, Consumer)
      */
     public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo) {
         return initializeFlowdroid(platformPath, config, callGraphAlgo, configuration -> { });
     }
 
     /**
-     * Initializes an analysis with a customizer applied after defaults and before call graph construction.
-     * The customizer may configure FlowDroid's callback, data-flow, and reconstruction timeouts.
+     * Resets Soot and constructs an analysis after applying a synchronous configuration customizer.
+     * Defaults disable code elimination, enable precise path reconstruction, and select the requested
+     * call graph algorithm. The customizer runs after those defaults and before backend creation,
+     * so it may override them or configure callback, data-flow, and path-reconstruction limits.
+     * For example, {@code configuration -> configuration.setDataFlowTimeout(60)} sets the
+     * backend data-flow timeout in seconds.
+     * <p>
+     * Every initialization attempt discards this helper's previous initialization and clears
+     * its cancellation request. Once construction succeeds, subsequent taint runs reuse the
+     * current Soot instance. A failed attempt leaves this helper uninitialized and does not
+     * restore the previous scene. The caller must prevent other Soot users from resetting or
+     * mutating the scene until its operations finish. Cancellation is checked before and after
+     * call graph construction; it does not guarantee immediate backend termination.
+     *
+     * @param platformPath non-null Android SDK platforms directory
+     * @param config Soot-options callback, or null to use this library's {@link SootConfig}
+     * @param callGraphAlgo {@code CHA}, {@code RTA}, {@code VTA}, or {@code SPARK}, ignoring
+     *                      surrounding whitespace and case; null selects {@code CHA}
+     * @param customizer non-null callback receiving the live mutable backend configuration
+     * @return live, mutable backend application bound to the current Soot state
+     * @throws NullPointerException if {@code platformPath} or {@code customizer} is null
+     * @throws IllegalArgumentException if the call graph algorithm is unsupported
+     * @throws CancellationException if cancellation or interruption is observed during initialization
+     * @throws RuntimeException if the customizer, backend initialization, or call graph construction fails
      */
     public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo,
                                                Consumer<InfoflowAndroidConfiguration> customizer) {
@@ -146,9 +193,14 @@ public class FlowdroidUtils {
     }
 
     /**
-     * Requests best-effort cancellation of the current analysis. FlowDroid cannot necessarily
-     * interrupt every callback or call graph phase immediately; callers must keep ownership
-     * of Soot until the operation has returned. Reinitialization clears the cancellation request.
+     * Requests best-effort cancellation from the analysis thread or another thread.
+     * The request is recorded even when no backend is currently running, and subsequent
+     * taint calls return a cancelled result until reinitialization clears the request.
+     * When a backend exists, its abort method is also invoked.
+     * <p>
+     * FlowDroid cannot necessarily interrupt every callback or call graph phase immediately.
+     * This method does not wait for termination; callers must keep ownership of Soot until
+     * the running operation returns, even after requesting cancellation.
      */
     public void abortAnalysis() {
         abortRequested = true;
@@ -166,9 +218,19 @@ public class FlowdroidUtils {
     }
 
     /**
-     * Runs taint analysis and returns the legacy textual reports. Failed, timed-out, or
-     * cancelled analyses throw instead of being mistaken for successful empty analyses.
-     * Use runTaintAnalysisResult to inspect partial findings and structured diagnostics.
+     * Runs taint analysis synchronously and renders successful findings as legacy reports.
+     * Failed, timed-out, or cancelled analyses throw; use
+     * {@link #runTaintAnalysisResult(Set, Set)} to inspect their partial findings and diagnostics.
+     * The caller must preserve exclusive ownership of the initialized Soot scene and must
+     * not mutate the source/sink descriptors during execution.
+     *
+     * @param sources non-null set of source method descriptors; may be empty
+     * @param sinks non-null set of sink method descriptors; may be empty
+     * @return mutable independent set of detached report strings, with identical reports
+     *         deduplicated; empty only for a successful analysis with no findings
+     * @throws NullPointerException if {@code sources} or {@code sinks} is null
+     * @throws IllegalStateException if initialization has not succeeded or the analysis result
+     *                               is failed, timed out, cancelled, or unavailable
      */
     public Set<String> runTaintAnalysis(Set<AndroidMethod> sources, Set<AndroidMethod> sinks) {
         AnalysisExecution execution = executeTaintAnalysis(sources, sinks, UUID.randomUUID());
@@ -186,15 +248,47 @@ public class FlowdroidUtils {
         }
     }
 
-    /** Runs an analysis with a newly generated identifier and returns detached immutable data. */
+    /**
+     * Runs synchronous taint analysis with a new random identifier and returns detached data.
+     * Check the returned status before interpreting an empty finding list. This overload has
+     * the same lifecycle, partial-result, and cancellation behavior as the identifier overload.
+     *
+     * @param sources non-null set of source method descriptors; may be empty
+     * @param sinks non-null set of sink method descriptors; may be empty
+     * @return non-null immutable result with a newly generated analysis identifier
+     * @throws NullPointerException if {@code sources} or {@code sinks} is null
+     * @throws IllegalStateException if this helper has not been successfully initialized
+     * @see #runTaintAnalysisResult(Set, Set, UUID)
+     */
     public TaintAnalysisResult runTaintAnalysisResult(Set<AndroidMethod> sources, Set<AndroidMethod> sinks) {
         return runTaintAnalysisResult(sources, sinks, UUID.randomUUID());
     }
 
     /**
-     * Runs an analysis associated with the caller's identifier. Failed and incomplete results
-     * retain any available findings. Invalid arguments and missing initialization remain programming
-     * errors and throw; runtime analysis failures are represented by FAILED with diagnostics.
+     * Runs synchronous taint analysis associated with the caller's identifier and detaches its result.
+     * Source/sink descriptors are passed to FlowDroid without copying; do not mutate them during
+     * the call. The caller must preserve exclusive ownership of the initialized Soot scene until
+     * result detachment finishes. This low-level API does not detect an external Soot reset.
+     * <p>
+     * Findings returned by the backend are retained for failed, timed-out, or cancelled runs
+     * when they can be detached. A backend exception before a result is returned yields no
+     * findings. Detachment failures retain findings already copied and add a diagnostic.
+     * A missing reconstructed path does not remove a finding. Endpoint and path values are
+     * copied to strings, so the returned result remains usable after reset.
+     * <p>
+     * Backend exceptions are represented as {@link AnalysisStatus#FAILED}, or
+     * {@link AnalysisStatus#CANCELLED} when cancellation/interruption is observed; backend
+     * timeout states become {@link AnalysisStatus#TIMED_OUT}. Cancellation requested before
+     * execution returns a cancelled empty result without invoking the backend. JVM errors
+     * are not converted to result statuses. Only a successful status with no findings denotes
+     * a completed empty analysis; success does not guarantee analysis soundness.
+     *
+     * @param sources non-null set of source method descriptors; may be empty
+     * @param sinks non-null set of sink method descriptors; may be empty
+     * @param analysisId non-null identifier to copy into the result; uniqueness is caller-managed
+     * @return non-null immutable detached result with completion status, findings, and diagnostics
+     * @throws NullPointerException if a set or {@code analysisId} is null
+     * @throws IllegalStateException if this helper has not been successfully initialized
      */
     public TaintAnalysisResult runTaintAnalysisResult(Set<AndroidMethod> sources, Set<AndroidMethod> sinks,
                                                     UUID analysisId) {
@@ -344,9 +438,11 @@ public class FlowdroidUtils {
     }
 
     /**
-     * Returns the package name of the Android application.
+     * Reads the manifest package name lazily, independently of FlowDroid initialization.
+     * The first result, including a failed read returning null, is cached for this helper's
+     * lifetime. Read failures are logged as warnings and are not retried by later calls.
      *
-     * @return the package name of the Android application, or null if the Manifest file could not be processed
+     * @return manifest package name, or null if it is unavailable or the manifest could not be processed
      */
     public String getPackageName() {
         if (!manifestRead) {

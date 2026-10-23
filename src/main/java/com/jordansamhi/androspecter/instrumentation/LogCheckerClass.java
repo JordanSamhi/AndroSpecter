@@ -8,12 +8,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * LogCheckerClass is a singleton class responsible for managing log operations.
- * It uses the Soot framework to manipulate and analyze Java bytecode.
- * It provides functionality to initialize a logging class, add logs, check if a log has already been made,
- * and log messages conditionally based on whether they have been logged before.
- * The generated logger records each message at most once per process, regardless of tag.
- * Its public static methods synchronize on the shared set, making the check, log, and add sequence atomic.
+ * Generates the {@code LogCheckerClass} runtime helper used by {@link Logger} in the current Soot scene.
+ * Prefer {@link #v()} so repeated callers share the generator's helper identity. The implicit no-argument
+ * constructor creates an independent generator; it does not generate a helper, and later generation can
+ * conflict with a helper owned by a different generator.
+ * <p>The generated helper emits each message at most once per process, regardless of tag, through
+ * {@code android.util.Log.d}. Its public static {@code log}, {@code addLog}, and {@code alreadyLogged}
+ * methods use explicit monitors on a shared set, preserving synchronization in JVM and DEX output.
+ * The check, sink call, and set update in {@code log} are atomic with respect to these helper methods.
+ * A sink failure releases the lock and propagates; the failed message is not marked as logged.
+ * <p>This generator mutates live Soot objects and must be called on the owning analysis thread. Its Java
+ * synchronization does not make concurrent use of Soot scenes safe, and it performs no context checks itself.
  */
 public class LogCheckerClass {
 
@@ -21,10 +26,11 @@ public class LogCheckerClass {
     private static LogCheckerClass instance;
 
     /**
-     * Provides a global access point for the singleton instance of LogCheckerClass.
-     * If the instance does not exist, it initializes a new instance.
+     * Returns the shared generator without generating a helper or resolving runtime dependencies.
+     * The generator survives {@code G.reset()}; {@link #generateClass()} detects the current scene and
+     * creates a fresh helper when necessary.
      *
-     * @return The singleton instance of LogCheckerClass.
+     * @return the process-wide helper generator
      */
     public static synchronized LogCheckerClass v() {
         if (instance == null) {
@@ -34,10 +40,16 @@ public class LogCheckerClass {
     }
 
     /**
-     * Generates a new SootClass for logging purposes and sets up its structure.
-     * This includes defining the class, its fields, and methods for log management.
-     * Reuses this generator's class in the current scene, and generates a fresh class after {@code G.reset()}.
-     * An unrelated application class with the helper's name is rejected rather than overwritten.
+     * Ensures this generator's helper exists as an application class in the current scene.
+     * Reuses its own existing helper, replaces a phantom placeholder, and creates a fresh helper after
+     * {@code G.reset()}. A non-phantom class with the same name owned by another generator or application
+     * is rejected. Required Object, String, Set, HashSet, Log, and Throwable signatures are resolved from
+     * the configured Soot classpath before helper creation; already sufficient signatures are reused.
+     * Generated method bodies are validated. Failures during generation can leave partial scene mutations.
+     *
+     * @throws IllegalStateException if the helper name collides or a required runtime class or method
+     *         signature cannot be resolved from the configured classpath
+     * @throws RuntimeException if Soot rejects a generated body or another scene mutation
      */
     public synchronized void generateClass() {
         SootClass existing = Scene.v().getSootClassUnsafe(Constants.LOG_CHECKER_CLASS, false);

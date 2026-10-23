@@ -37,6 +37,12 @@ public class TmpFolder {
 
     private TmpFolder() {}
 
+    /**
+     * Returns the shared accessor for the JVM's temporary directory property.
+     * This does not create or reserve a directory for an analysis.
+     *
+     * @return the legacy singleton utility
+     */
     public static TmpFolder v() {
         if (instance == null) {
             instance = new TmpFolder();

@@ -26,9 +26,12 @@ package com.jordansamhi.androspecter.commandlineoptions;
  */
 
 /**
- * Represents a command line option.
- * Encapsulates all the properties of a command line option like its long and short form,
- * description, whether it requires an argument, whether it's mandatory, and its value.
+ * Mutable declaration of one command-line option, including its aliases, help text,
+ * argument requirement, and mandatory status. Configure a descriptor before passing it to
+ * {@link CommandLineOptions#addOption(CommandLineOption)}, which snapshots the declaration.
+ * Later setter calls do not reconfigure that parser. The value property supports legacy
+ * consumers and is updated by that parser; prefer an immutable ParseResult for new code.
+ * Descriptors perform no validation themselves and are not thread-safe.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -65,13 +68,15 @@ public class CommandLineOption {
     private String value;
 
     /**
-     * Constructor for CommandLineOption.
+     * Creates an option declaration without registering or validating it. Alias names omit
+     * leading hyphens. Register the descriptor with CommandLineOptions to validate it; that
+     * parser reserves the {@code h} and {@code help} aliases for its built-in help flag.
      *
-     * @param longOpt     The long form of the option.
-     * @param shortOpt    The short form of the option.
-     * @param description The description of the option.
-     * @param hasArg      True if the option requires an argument.
-     * @param isRequired  True if the option is mandatory.
+     * @param longOpt long alias, such as {@code apk}; may be null when a short alias is used
+     * @param shortOpt short alias, such as {@code a}; may be null when a long alias is used
+     * @param description text shown in generated help; may be null
+     * @param hasArg true if this option takes one argument, false for a flag
+     * @param isRequired true if the option must appear unless help is requested
      */
     public CommandLineOption(String longOpt, String shortOpt, String description, boolean hasArg, boolean isRequired) {
         this.longOpt = longOpt;
@@ -84,16 +89,16 @@ public class CommandLineOption {
     /**
      * Returns the long form of the option.
      *
-     * @return The long form of the option.
+     * @return the stored long alias without leading hyphens, or null if none was assigned
      */
     public String getLongOpt() {
         return longOpt;
     }
 
     /**
-     * Sets the long form of the option.
+     * Sets the long alias on this descriptor. Already registered parsers keep their copy.
      *
-     * @param longOpt The long form of the option.
+     * @param longOpt long alias without leading hyphens, or null to remove it
      */
     public void setLongOpt(String longOpt) {
         this.longOpt = longOpt;
@@ -102,16 +107,16 @@ public class CommandLineOption {
     /**
      * Returns the short form of the option.
      *
-     * @return The short form of the option.
+     * @return the stored short alias without leading hyphens, or null if none was assigned
      */
     public String getShortOpt() {
         return shortOpt;
     }
 
     /**
-     * Sets the short form of the option.
+     * Sets the short alias on this descriptor. Already registered parsers keep their copy.
      *
-     * @param shortOpt The short form of the option.
+     * @param shortOpt short alias without leading hyphens, or null to remove it
      */
     public void setShortOpt(String shortOpt) {
         this.shortOpt = shortOpt;
@@ -120,70 +125,73 @@ public class CommandLineOption {
     /**
      * Returns the description of the option.
      *
-     * @return The description of the option.
+     * @return the stored help description, or null if none was assigned
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Sets the description of the option.
+     * Sets this descriptor's help text. Already registered parsers keep their copy.
      *
-     * @param description The description of the option.
+     * @param description description for generated help, or null to omit it
      */
     public void setDescription(String description) {
         this.description = description;
     }
 
     /**
-     * Returns whether the option requires an argument.
+     * Returns whether this declaration takes one argument rather than being a flag.
      *
-     * @return True if the option requires an argument, false otherwise.
+     * @return true for an option with one argument, false for a flag
      */
     public boolean hasArg() {
         return hasArg;
     }
 
     /**
-     * Sets whether the option requires an argument.
+     * Sets whether this declaration takes an argument. Already registered parsers keep their copy.
      *
-     * @param hasArg True if the option requires an argument, false otherwise.
+     * @param hasArg true to require one argument when present, false for a flag
      */
     public void setHasArg(boolean hasArg) {
         this.hasArg = hasArg;
     }
 
     /**
-     * Returns whether the option is mandatory.
+     * Returns whether this declaration requires the option to appear in normal parses.
      *
-     * @return True if the option is mandatory, false otherwise.
+     * @return true if the option is mandatory; built-in help bypasses this requirement
      */
     public boolean isRequired() {
         return isRequired;
     }
 
     /**
-     * Sets whether the option is mandatory.
+     * Sets whether the option is mandatory. Already registered parsers keep their copy.
      *
-     * @param required True if the option is mandatory, false otherwise.
+     * @param required true if the option must appear unless help is requested
      */
     public void setRequired(boolean required) {
         isRequired = required;
     }
 
     /**
-     * Returns the value of the option.
+     * Returns the mutable legacy value. A registered parser clears it before each parse and
+     * sets it after success; callers may also replace it directly. It is not an immutable
+     * record of a parse, and flags can be present while their value is null.
      *
-     * @return The value of the option.
+     * @return the stored argument value, or null when no value is stored
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Sets the value of the option.
+     * Replaces the mutable legacy value without changing the option declaration, parser
+     * configuration, or previously returned parse snapshots.
      *
-     * @param value The value of the option.
+     * @param value value to store, or null to clear it
      */
     public void setValue(String value) {
         this.value = value;

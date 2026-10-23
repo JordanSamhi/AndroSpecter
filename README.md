@@ -319,6 +319,9 @@ This project is licensed under the GNU LESSER GENERAL PUBLIC LICENSE 2.1 - see t
 
 ## Contact & Contributions
 
+API contributions must include Javadoc for public methods and constructors;
+see the [documentation requirements and validation command](CONTRIBUTING.md).
+
 If you have any questions, issues, feedback, or want to contribute, please don't hesitate to [contact us](mailto:jordan.samhi@uni.lu).
 
 Your insights and contributions are always welcome! 🌟

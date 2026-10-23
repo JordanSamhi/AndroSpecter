@@ -38,9 +38,15 @@ public class MethodSignatureConverter {
 
     private static MethodSignatureConverter instance;
 
+    /** Creates a stateless converter for Jimple method signatures. */
     public MethodSignatureConverter() {
     }
 
+    /**
+     * Returns the lazily created shared converter.
+     *
+     * @return the legacy shared instance; callers may also construct their own
+     */
     public static MethodSignatureConverter v() {
         if (instance == null) {
             instance = new MethodSignatureConverter();

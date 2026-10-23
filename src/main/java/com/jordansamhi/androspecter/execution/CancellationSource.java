@@ -10,24 +10,43 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Caller-owned, thread-safe cancellation source. Cancellation never exits the JVM. */
+/**
+ * Caller-owned, thread-safe cancellation source, initially not cancelled. Create a source
+ * for each operation, give its {@link #token()} to the operation, and call {@link #cancel()}
+ * from the controlling thread when needed. Closing the source also requests cancellation.
+ * Cancellation is permanent, cooperative, and never exits the JVM.
+ * <pre>{@code
+ * try (CancellationSource source = new CancellationSource();
+ *      Deadline deadline = Deadline.after(Duration.ofMinutes(2), source::cancel)) {
+ *     // Pass source.token() to the operation before starting it.
+ * }
+ * }</pre>
+ */
 public final class CancellationSource implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(CancellationSource.class);
     private final Object lock = new Object();
     private final Set<Callback> callbacks = new LinkedHashSet<>();
     private volatile boolean cancelled;
     private final CancellationToken token = new CancellationToken() {
+        /** {@inheritDoc} */
         @Override
         public boolean isCancellationRequested() {
             return cancelled;
         }
 
+        /** {@inheritDoc} */
         @Override
         public Registration onCancellation(Runnable action) {
             return register(action);
         }
     };
 
+    /**
+     * Returns the read-only view shared by all operations observing this source. Each call
+     * returns the same token; closing the source permanently leaves that token cancelled.
+     *
+     * @return this source's thread-safe cancellation token
+     */
     public CancellationToken token() {
         return token;
     }
@@ -36,8 +55,13 @@ public final class CancellationSource implements AutoCloseable {
      * Requests cancellation and runs registered actions synchronously on the calling thread.
      * Runtime exceptions from an action are logged and do not prevent the remaining actions.
      * Cancellation is cooperative and does not forcibly stop any thread.
+     * The request is visible before callbacks run. Callbacks should return promptly because
+     * this method does not return until the callbacks it invokes finish; a concurrent repeated
+     * request can return false while those callbacks are still running. Callback Errors propagate
+     * and can prevent remaining callbacks from running; the source remains cancelled.
      *
      * @return true only for the first cancellation request
+     * @throws Error if a callback throws an Error
      */
     public boolean cancel() {
         List<Callback> pending;
@@ -65,7 +89,13 @@ public final class CancellationSource implements AutoCloseable {
         return callback;
     }
 
-    /** Requests cancellation when the caller's operation scope closes. */
+    /**
+     * Requests cancellation, with the same synchronous callback behavior as {@link #cancel()}.
+     * This is safe to repeat and does not wait for an operation to finish or interrupt its
+     * thread. It is cancellation of the operation, not merely disposal of this source.
+     *
+     * @throws Error if a callback throws an Error
+     */
     @Override
     public void close() {
         cancel();
@@ -89,6 +119,7 @@ public final class CancellationSource implements AutoCloseable {
             }
         }
 
+        /** {@inheritDoc} */
         @Override
         public void close() {
             pending.set(false);

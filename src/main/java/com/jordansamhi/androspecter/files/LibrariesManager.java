@@ -47,6 +47,14 @@ public class LibrariesManager extends FileLoader {
         super();
     }
 
+    /**
+     * Returns the shared classifier, loading bundled package prefixes on first use.
+     * This classification is independent of Soot's application-class flag.
+     *
+     * @return the singleton library classifier
+     * @throws IllegalStateException if the bundled prefix resource is missing
+     * @throws java.io.UncheckedIOException if the resource cannot be read
+     */
     public static synchronized LibrariesManager v() {
         if (instance == null) {
             instance = new LibrariesManager();

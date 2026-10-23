@@ -41,23 +41,38 @@ public class Writer {
     private static final Writer INSTANCE = new Writer();
     private final Logger logger;
 
+    /**
+     * Creates a facade using the SLF4J logger named after Writer. The consuming application
+     * supplies the logging provider, destinations, and level configuration.
+     */
     public Writer() {
         this(LoggerFactory.getLogger(Writer.class));
     }
 
-    /** Uses the supplied logger without changing application logging configuration. */
+    /**
+     * Creates a facade backed by a caller-supplied logger without changing its configuration.
+     *
+     * @param logger destination for all messages from this facade
+     * @throws NullPointerException if {@code logger} is null
+     */
     public Writer(Logger logger) {
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
+    /**
+     * Returns the shared facade using the Writer-class logger. Obtain a dedicated instance
+     * with {@link #Writer(Logger)} when messages should use a different logger.
+     *
+     * @return the shared immutable logging facade
+     */
     public static Writer v() {
         return INSTANCE;
     }
 
     /**
-     * Logs an error message.
+     * Sends a literal message to the logger at ERROR level, subject to provider configuration.
      *
-     * @param s the error message to print
+     * @param s message passed unchanged to the logger
      */
     public void perror(String s) {
         logger.error(s);
@@ -65,27 +80,27 @@ public class Writer {
 
 
     /**
-     * Logs a success message at INFO level.
+     * Sends a success message at INFO level; no additional decoration is applied.
      *
-     * @param s the success message to print
+     * @param s message passed unchanged to the logger
      */
     public void psuccess(String s) {
         logger.info(s);
     }
 
     /**
-     * Logs a warning message.
+     * Sends a literal message to the logger at WARN level, subject to provider configuration.
      *
-     * @param s the warning message to print
+     * @param s message passed unchanged to the logger
      */
     public void pwarning(String s) {
         logger.warn(s);
     }
 
     /**
-     * Logs an informational message.
+     * Sends a literal message to the logger at INFO level, subject to provider configuration.
      *
-     * @param s the informational message to print
+     * @param s message passed unchanged to the logger
      */
     public void pinfo(String s) {
         logger.info(s);

@@ -186,6 +186,14 @@ public class AndroZooUtils {
         }
     }
 
+    /**
+     * Formats a byte count using powers of 1024 and the JVM's default number locale.
+     * Unit labels range from B through TB, with at most one fractional digit.
+     *
+     * @param size byte count; zero or negative values produce {@code "0 B"}
+     * @return the formatted value followed by a space and its unit
+     * @throws ArrayIndexOutOfBoundsException if the computed unit exceeds TB
+     */
     public static String readableFileSize(long size) {
         if (size <= 0) return "0 B";
         final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};

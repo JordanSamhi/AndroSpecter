@@ -27,10 +27,26 @@ public final class AnalysisContext implements AutoCloseable {
         this.owner = Thread.currentThread();
     }
 
+    /**
+     * Borrows the current Soot generation on the calling thread without taking ownership
+     * of it. The caller must initialize and coordinate Soot separately. Closing this
+     * context does not reset Soot. Thread interruption is still checked at checkpoints.
+     *
+     * @return a new context with an independent identity and no explicit cancellation source
+     */
     public static AnalysisContext capture() {
         return capture(CancellationToken.none());
     }
 
+    /**
+     * Borrows the current Soot generation with caller-supplied cancellation. Capture does
+     * not check cancellation or acquire the managed-session lease used by AndroidAnalysis.
+     * Use this for advanced operations on a scene whose lifecycle the caller owns.
+     *
+     * @param cancellation token checked by {@link #checkValid()}
+     * @return a new context confined to the calling thread
+     * @throws NullPointerException if {@code cancellation} is null
+     */
     public static AnalysisContext capture(CancellationToken cancellation) {
         return capture(UUID.randomUUID(), cancellation);
     }
@@ -39,11 +55,25 @@ public final class AnalysisContext implements AutoCloseable {
         return new AnalysisContext(id, cancellation);
     }
 
-    /** Stable identity to associate detached snapshots with this analysis. */
+    /**
+     * Returns the stable identity used to associate detached snapshots with this analysis.
+     * This identity remains available after cancellation, closure, or a Soot reset.
+     *
+     * @return this context's immutable analysis identifier
+     */
     public UUID id() {
         return id;
     }
 
+    /**
+     * Checks thread ownership, closure, Soot generation, and cancellation, in that order.
+     * Call this before using borrowed Soot objects. A successful check does not protect
+     * against uncoordinated external code resetting or modifying Soot afterward.
+     *
+     * @throws IllegalStateException if called on another thread, after closure, or after Soot reset
+     * @throws java.util.concurrent.CancellationException if cancellation is requested or the
+     *         calling thread is interrupted; the interrupt flag is preserved
+     */
     public void checkValid() {
         checkOwner();
         if (closed) {
@@ -55,7 +85,12 @@ public final class AnalysisContext implements AutoCloseable {
         cancellation.throwIfCancellationRequested();
     }
 
-    /** Lifecycle validity on the calling thread; cancellation is checked by checkValid(). */
+    /**
+     * Tests lifecycle validity on the calling thread without checking cancellation.
+     * Use {@link #checkValid()} when a cancellation checkpoint is also required.
+     *
+     * @return true only on the owning thread while this context is open and Soot has not reset
+     */
     public boolean isValid() {
         return !closed && owner == Thread.currentThread() && ownsCurrentGeneration();
     }
@@ -70,6 +105,14 @@ public final class AnalysisContext implements AutoCloseable {
         }
     }
 
+    /**
+     * Invalidates this view without resetting Soot or releasing an AndroidAnalysis lease.
+     * Repeated calls on the owning thread are harmless. For a context obtained from
+     * {@link AndroidAnalysis#context()}, close the AndroidAnalysis itself to release its
+     * resources, even if this view has already been closed.
+     *
+     * @throws IllegalStateException if called from a thread other than the capturing thread
+     */
     @Override
     public void close() {
         checkOwner();

@@ -41,6 +41,17 @@ import java.util.Objects;
 /**
  * Caller-owned command-line parser. Parsing returns immutable data, never prints help,
  * and never exits the JVM. Instances are independent; configure and use each on one thread.
+ * A built-in {@code -h}/{@code --help} flag is always available. For example:
+ * <pre>{@code
+ * CommandLineOptions options = new CommandLineOptions("analyze");
+ * options.addOption(new CommandLineOption("apk", "a", "APK file", true, true));
+ * CommandLineOptions.ParseResult result = options.parse(args);
+ * if (result.helpRequested()) {
+ *     // Display result.helpText() using the application's chosen output.
+ * } else {
+ *     String apk = result.getOptionValue("apk");
+ * }
+ * }</pre>
  */
 public class CommandLineOptions {
     private Options options = newOptions();
@@ -49,14 +60,30 @@ public class CommandLineOptions {
     private String appName;
     private static CommandLineOptions instance;
 
+    /**
+     * Creates an independent parser with the built-in help flag. Call
+     * {@link #setAppName(String)} before parsing arguments or requesting help text.
+     */
     public CommandLineOptions() {
     }
 
+    /**
+     * Creates an independent parser with an application name and the built-in help flag.
+     *
+     * @param appName executable name or command synopsis used in generated help
+     * @throws IllegalArgumentException if {@code appName} is null or blank
+     */
     public CommandLineOptions(String appName) {
         setAppName(appName);
     }
 
-    /** @deprecated Create a new parser for each caller instead of sharing mutable global state. */
+    /**
+     * Returns the legacy mutable singleton. Only singleton creation is synchronized;
+     * configuration and parsing on the returned instance are not thread-safe.
+     *
+     * @return the shared parser, initially without an application name
+     * @deprecated Create a new parser for each caller instead of sharing mutable global state.
+     */
     @Deprecated
     public static synchronized CommandLineOptions v() {
         if (instance == null) {
@@ -69,10 +96,13 @@ public class CommandLineOptions {
      * Parses arguments and returns a snapshot. Help is recognized alongside regular options,
      * including when required options are absent. Unknown options and missing argument values
      * still produce validation errors. Tokens after {@code --} are positional arguments.
+     * Long-option abbreviations are not accepted. Each attempt clears legacy parsed values,
+     * including a failed attempt; an earlier returned snapshot remains unchanged.
      *
      * @param args command-line arguments
      * @return parsed values, positional arguments, and help text
-     * @throws ValidationException when the arguments do not match the registered options
+     * @throws ValidationException when arguments are null, contain null elements, or do not
+     *         match the registered options
      * @throws IllegalStateException when no application name has been configured
      */
     public ParseResult parse(String... args) {
@@ -112,6 +142,8 @@ public class CommandLineOptions {
      * {@link #helpText()}, or catch {@link ValidationException} in the application.
      *
      * @param args command-line arguments
+     * @throws ValidationException if arguments are invalid, as described by {@link #parse(String...)}
+     * @throws IllegalStateException if no application name has been configured
      * @deprecated Use {@link #parse(String...)} and its returned result.
      */
     @Deprecated
@@ -122,6 +154,11 @@ public class CommandLineOptions {
     /**
      * Registers a snapshot of an option declaration. Later declaration changes do not modify
      * the parser. The legacy descriptor's value is still updated after each successful parse.
+     * Use aliases without leading hyphens; {@code h} and {@code help} are reserved.
+     *
+     * @param option mutable descriptor whose declaration is copied at registration
+     * @throws NullPointerException if {@code option} is null
+     * @throws IllegalArgumentException if an alias is invalid, already registered, or reserved
      */
     public void addOption(CommandLineOption option) {
         Objects.requireNonNull(option, "option");
@@ -141,7 +178,13 @@ public class CommandLineOptions {
         optionList.add(new RegisteredOption(option, cliOption));
     }
 
-    /** Returns generated help text without writing to any output stream. */
+    /**
+     * Generates help for the current application name and registered options without writing
+     * to any output stream. The caller chooses whether and where to display it.
+     *
+     * @return formatted help text, including the built-in help flag
+     * @throws IllegalStateException if no application name has been configured
+     */
     public String helpText() {
         requireAppName();
         StringWriter text = new StringWriter();
@@ -151,11 +194,24 @@ public class CommandLineOptions {
         return text.toString();
     }
 
+    /**
+     * Reports the help flag from the latest successful parse. A failed parse or reset clears
+     * this state; a previously returned ParseResult retains its own independent value.
+     *
+     * @return true if the current stored result requests help, otherwise false
+     */
     public boolean isHelpRequested() {
         return lastResult != null && lastResult.helpRequested();
     }
 
-    /** @deprecated Read values from the immutable result returned by {@link #parse(String...)}. */
+    /**
+     * Reads the mutable legacy descriptor value for a registered short or long alias.
+     * Because callers can modify descriptors, this may differ from the last parse snapshot.
+     *
+     * @param name alias without leading hyphens; null is permitted and returns null
+     * @return the descriptor value, or null for an unknown alias, absent value, or flag
+     * @deprecated Read values from the immutable result returned by {@link #parse(String...)}.
+     */
     @Deprecated
     public String getOptionValue(String name) {
         if (name == null) {
@@ -170,13 +226,24 @@ public class CommandLineOptions {
         return null;
     }
 
-    /** @deprecated Read option presence from the result returned by {@link #parse(String...)}. */
+    /**
+     * Checks option presence in the latest stored parse snapshot, including flags without values.
+     *
+     * @param name short or long alias without leading hyphens
+     * @return true if present in the latest result; false before parsing, after failure/reset,
+     *         or for an unknown or null alias
+     * @deprecated Read option presence from the result returned by {@link #parse(String...)}.
+     */
     @Deprecated
     public boolean hasOption(String name) {
         return lastResult != null && lastResult.hasOption(name);
     }
 
-    /** Clears the configuration and the latest parse result, retaining built-in help. */
+    /**
+     * Removes registered options, clears their legacy values and the latest result, and
+     * unsets the application name. The built-in help flag remains. Previously returned
+     * snapshots are unchanged; configure a new name before parsing again.
+     */
     public void reset() {
         clearParsedValues();
         options = newOptions();
@@ -184,10 +251,22 @@ public class CommandLineOptions {
         appName = null;
     }
 
+    /**
+     * Returns the name or synopsis used in subsequently generated help.
+     *
+     * @return the configured name, or null before configuration or after {@link #reset()}
+     */
     public String getAppName() {
         return appName;
     }
 
+    /**
+     * Sets the name or synopsis used in future help text. This does not update help already
+     * captured in a ParseResult, and surrounding whitespace is retained.
+     *
+     * @param appName nonblank executable name or command synopsis
+     * @throws IllegalArgumentException if {@code appName} is null or blank
+     */
     public void setAppName(String appName) {
         if (appName == null || appName.trim().isEmpty()) {
             throw new IllegalArgumentException("Application name must not be blank");
@@ -246,22 +325,55 @@ public class CommandLineOptions {
             this.helpText = helpText;
         }
 
+        /**
+         * Tests whether {@code -h} or {@code --help} was parsed as an option. An option
+         * value or positional argument containing {@code --help} does not request help.
+         *
+         * @return true if this parse requested help
+         */
         public boolean helpRequested() {
             return helpRequested;
         }
 
+        /**
+         * Returns help captured using the configuration at parse time, whether or not the
+         * user requested it. Later parser configuration changes do not alter this text.
+         *
+         * @return formatted help text ready for caller-controlled display
+         */
         public String helpText() {
             return helpText;
         }
 
+        /**
+         * Tests option presence independently of whether the option accepts a value.
+         * Both registered aliases refer to the same parsed option.
+         *
+         * @param name short or long alias without leading hyphens
+         * @return true if present; false for an absent, unknown, or null alias
+         */
         public boolean hasOption(String name) {
             return values.containsKey(name);
         }
 
+        /**
+         * Returns an option's parsed argument using either registered alias. For repeated
+         * occurrences, the first value is retained. Use {@link #hasOption(String)} to
+         * distinguish a present flag from an absent option.
+         *
+         * @param name short or long alias without leading hyphens
+         * @return the argument, or null for a flag or an absent, unknown, or null alias
+         */
         public String getOptionValue(String name) {
             return values.get(name);
         }
 
+        /**
+         * Returns positional arguments in their original order, including tokens after the
+         * {@code --} option terminator. The terminator itself is not included.
+         *
+         * @return an immutable list of non-option arguments
+         */
         public List<String> arguments() {
             return arguments;
         }
@@ -269,6 +381,12 @@ public class CommandLineOptions {
 
     /** Invalid command-line input, for the application to report and choose an exit status. */
     public static final class ValidationException extends IllegalArgumentException {
+        /**
+         * Creates an input-validation error without printing output or choosing an exit status.
+         *
+         * @param message explanation of the invalid input; may be null
+         * @param cause underlying parser failure, or null when no cause is available
+         */
         public ValidationException(String message, Throwable cause) {
             super(message, cause);
         }

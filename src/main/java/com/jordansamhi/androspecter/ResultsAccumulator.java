@@ -10,7 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Instance-owned metrics. Prefer a new instance for each analysis.
+ * Instance-owned metrics. Prefer a new instance for each analysis. Methods are
+ * synchronized; snapshots contain no live Soot objects and may be retained after
+ * their analysis closes.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -41,9 +43,11 @@ public class ResultsAccumulator {
     }
 
     /**
-     * Method to get singleton instance.
+     * Returns the shared legacy accumulator. Call {@link #reset()} between apps
+     * when using this instance.
      *
      * @return singleton instance of ResultsAccumulator
+     * @deprecated Create an accumulator per analysis or use the session's metrics.
      */
     @Deprecated
     public static ResultsAccumulator v() {
@@ -71,6 +75,7 @@ public class ResultsAccumulator {
      * Setter for application name.
      *
      * @param appName the new application name
+     * @throws NullPointerException if {@code appName} is null
      */
     public synchronized void setAppName(String appName) {
         this.appName = Objects.requireNonNull(appName, "appName");
@@ -80,6 +85,7 @@ public class ResultsAccumulator {
      * Method to increment a specific metric by 1. If the metric does not exist, it is created and set to 1.
      *
      * @param metric the metric to increment
+     * @throws NullPointerException if {@code metric} is null
      */
     public synchronized void incrementMetric(String metric) {
         metrics.put(metric, metrics.getOrDefault(metric, 0) + 1);
@@ -90,6 +96,7 @@ public class ResultsAccumulator {
      *
      * @param metric the metric to get
      * @return the count of the metric, or 0 if the metric does not exist
+     * @throws NullPointerException if {@code metric} is null
      */
     public synchronized int getMetric(String metric) {
         return metrics.getOrDefault(metric, 0);
@@ -100,6 +107,7 @@ public class ResultsAccumulator {
      *
      * @param metric the metric to set
      * @param value  the value to set
+     * @throws NullPointerException if {@code metric} is null
      */
     public synchronized void setMetric(String metric, int value) {
         metrics.put(metric, value);
@@ -107,7 +115,8 @@ public class ResultsAccumulator {
 
 
     /**
-     * Method to print all the metrics in a vector form.
+     * Logs {@link #getVectorResults()} at SLF4J INFO level. The caller chooses
+     * the logging provider and output destination.
      */
     public synchronized void printVectorResults() {
         LOG.info("{}", getVectorResults());
@@ -138,18 +147,37 @@ public class ResultsAccumulator {
     }
 
     /**
-     * Prints all metrics in ascending metric-name order.
+     * Logs the application name and metrics in ascending metric-name order at
+     * SLF4J INFO level. The caller chooses the logging provider and destination.
      */
     public synchronized void printResults() {
         LOG.info("Results for {}: {}", appName, metrics);
     }
 
-    /** Returns an immutable, detached copy in alphabetical metric-name order. */
+    /**
+     * Copies the current application name and metrics into a detached value.
+     * Subsequent increments or resets do not change the returned snapshot.
+     *
+     * @return an immutable snapshot with metrics ordered alphabetically by name
+     */
     public synchronized Snapshot snapshot() {
         return new Snapshot(appName, metrics);
     }
 
+    /**
+     * Immutable metrics suitable for retention or serialization after analysis.
+     *
+     * @param appName application label, possibly empty but never null
+     * @param metrics detached, unmodifiable map ordered alphabetically by metric name
+     */
     public record Snapshot(String appName, Map<String, Integer> metrics) {
+        /**
+         * Copies the supplied metrics into an unmodifiable sorted map.
+         *
+         * @param appName non-null application label
+         * @param metrics non-null metric map with non-null keys; caller mutation is not retained
+         * @throws NullPointerException if the application name, map, or a key is null
+         */
         public Snapshot {
             Objects.requireNonNull(appName, "appName");
             metrics = Collections.unmodifiableMap(new TreeMap<>(metrics));

@@ -16,13 +16,30 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
- * Immutable inspection plan. Only registered levels are visited; bodies are loaded only for selected concrete
- * methods when a statement or invocation callback is registered. Traversal snapshots tolerate collection edits.
- * Callbacks run class, method, statement, then invocation; registrations at each level retain their order.
+ * An immutable registration plan for visiting the current Soot scene. Start with {@link #builder()},
+ * register only the callbacks needed, and run the plan through an analysis or {@link #run(AnalysisContext)}.
+ * No application-class or library filter is imposed by default. Bodies are loaded only for selected concrete
+ * methods when a statement or invocation callback is registered.
+ * <p>Callbacks receive borrowed, mutable Soot objects, not detached snapshots. Use them only on the context's
+ * owning thread while that context remains valid; do not reset Soot from a callback. Collection snapshots
+ * allow structural edits during traversal, but removed objects may still be visited and newly added objects
+ * may not be visited. Mutating callbacks must preserve valid bodies and manage any cached analysis results.
+ * Prefer an explicit transformation for mutations that should invalidate a managed analysis's call graph.
+ * <p>Callbacks run class, method, statement, then invocation; registrations at each level retain their order.
+ * Immutability covers the registration lists, not mutable state captured by predicates or callbacks.
  */
 public final class Inspection {
+    /** Receives an invocation expression together with its containing method and statement. */
     @FunctionalInterface
     public interface InvocationVisitor {
+        /**
+         * Visits an invocation without requiring the inspector to resolve its target method.
+         * All arguments are borrowed from the current scene and share its lifetime.
+         *
+         * @param caller method containing the invocation
+         * @param statement statement containing {@code invocation}
+         * @param invocation invocation expression, which may target an unresolved method
+         */
         void accept(SootMethod caller, Stmt statement, InvokeExpr invocation);
     }
 
@@ -42,10 +59,28 @@ public final class Inspection {
         invocationVisitors = List.copyOf(builder.invocationVisitors);
     }
 
+    /**
+     * Creates a builder with no callbacks or filtering restrictions.
+     *
+     * @return a new, independently mutable builder
+     */
     public static Builder builder() {
         return new Builder();
     }
 
+    /**
+     * Visits selected classes and methods in the current scene on the context's owning thread.
+     * Class predicates run before method enumeration, and method predicates run before body loading.
+     * A plan with no callbacks only checks the context; it evaluates no predicates and loads no bodies.
+     * Context validity and cancellation are checked around each user callback and predicate.
+     * Callback, predicate, and Soot body-loading failures propagate immediately without undoing earlier work.
+     *
+     * @param context valid context for the current Soot scene; this method does not close it
+     * @throws NullPointerException if {@code context} is null
+     * @throws IllegalStateException if the context is closed, belongs to another thread, or Soot was reset
+     * @throws java.util.concurrent.CancellationException if cancellation or thread interruption is observed
+     * @throws RuntimeException if a predicate, callback, or Soot body-loading operation fails
+     */
     public void run(AnalysisContext context) {
         Objects.requireNonNull(context, "context").checkValid();
         if (classVisitors.isEmpty() && methodVisitors.isEmpty() && statementVisitors.isEmpty() && invocationVisitors.isEmpty()) {
@@ -104,6 +139,7 @@ public final class Inspection {
         return true;
     }
 
+    /** Mutable callback registration builder; each build copies its current registration lists. */
     public static final class Builder {
         private final List<Predicate<SootClass>> classes = new ArrayList<>();
         private final List<Predicate<SootMethod>> methods = new ArrayList<>();
@@ -114,42 +150,104 @@ public final class Inspection {
 
         private Builder() {}
 
-        /** Adds a class predicate; repeated calls are combined with AND. */
+        /**
+         * Adds a class predicate. Repeated calls are combined with short-circuit AND in registration order.
+         * Rejected classes receive no callbacks and none of their method bodies are loaded by this plan.
+         *
+         * @param predicate predicate over a borrowed class in the current scene
+         * @return this builder
+         * @throws NullPointerException if {@code predicate} is null
+         */
         public Builder classes(Predicate<SootClass> predicate) {
             classes.add(Objects.requireNonNull(predicate, "predicate"));
             return this;
         }
 
-        /** Adds a method predicate; repeated calls are combined with AND. */
+        /**
+         * Adds a method predicate. Repeated calls are combined with short-circuit AND in registration order.
+         * Rejected methods receive no callbacks and their bodies are not loaded by this plan.
+         *
+         * @param predicate predicate over a borrowed method in a selected class
+         * @return this builder
+         * @throws NullPointerException if {@code predicate} is null
+         */
         public Builder methods(Predicate<SootMethod> predicate) {
             methods.add(Objects.requireNonNull(predicate, "predicate"));
             return this;
         }
 
+        /**
+         * Adds a class predicate excluding classes classified as libraries by {@code filter}.
+         * This is ANDed with existing class predicates; repeated calls exclude the union of their libraries.
+         *
+         * @param filter caller-selected classification policy
+         * @return this builder
+         * @throws NullPointerException if {@code filter} is null
+         */
         public Builder excludeLibraries(LibraryFilter filter) {
             return classes(Objects.requireNonNull(filter, "filter").negate());
         }
 
+        /**
+         * Appends a callback for every selected class, before its method callbacks.
+         * Registering only class callbacks does not enumerate methods or load bodies.
+         *
+         * @param visitor callback receiving a borrowed class from the current scene
+         * @return this builder
+         * @throws NullPointerException if {@code visitor} is null
+         */
         public Builder onClass(Consumer<SootClass> visitor) {
             classVisitors.add(Objects.requireNonNull(visitor, "visitor"));
             return this;
         }
 
+        /**
+         * Appends a callback for every selected method, including abstract and native methods.
+         * The inspector does not load bodies for method callbacks alone.
+         *
+         * @param visitor callback receiving a borrowed method from the current scene
+         * @return this builder
+         * @throws NullPointerException if {@code visitor} is null
+         */
         public Builder onMethod(Consumer<SootMethod> visitor) {
             methodVisitors.add(Objects.requireNonNull(visitor, "visitor"));
             return this;
         }
 
+        /**
+         * Appends a callback for each unit in selected concrete methods, including identities and returns.
+         * Enabling this level loads those methods' bodies. Statement callbacks precede invocation callbacks
+         * for the same unit; both arguments are borrowed from the current scene.
+         *
+         * @param visitor callback receiving the containing method and unit
+         * @return this builder
+         * @throws NullPointerException if {@code visitor} is null
+         */
         public Builder onStatement(BiConsumer<SootMethod, Unit> visitor) {
             statementVisitors.add(Objects.requireNonNull(visitor, "visitor"));
             return this;
         }
 
+        /**
+         * Appends a callback for invocation expressions in selected concrete methods.
+         * This loads their bodies but requires no class, method, or statement callback registration.
+         * The inspector does not resolve the invocation's target method.
+         *
+         * @param visitor callback receiving borrowed invocation context
+         * @return this builder
+         * @throws NullPointerException if {@code visitor} is null
+         */
         public Builder onInvoke(InvocationVisitor visitor) {
             invocationVisitors.add(Objects.requireNonNull(visitor, "visitor"));
             return this;
         }
 
+        /**
+         * Copies the current registrations into a reusable plan; later builder edits do not affect it.
+         * Callback and predicate instances themselves are shared, not cloned.
+         *
+         * @return a new immutable registration plan
+         */
         public Inspection build() {
             return new Inspection(this);
         }
