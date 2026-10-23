@@ -7,13 +7,15 @@ publishing. The current `1.2.0-SNAPSHOT` version remains a development version.
 
 ## Local checks
 
-Use JDK 17 or later and Maven 3. Maven 4 is not supported by this publishing plugin.
+Use JDK 17 or later and Maven 3.6.3 or later in the Maven 3 series.
+Maven 4 is not supported by this publishing plugin.
 Before preparing a release, run the tests, generate the strict public Javadoc, and
 build the independently maintained examples:
 
 ```sh
 mvn clean install
 mvn -f examples/pom.xml clean package dependency:copy-dependencies
+mvn -f cli/pom.xml clean verify
 mvn -Prelease -Dgpg.skip=true verify
 ```
 
@@ -47,10 +49,11 @@ when needed. Central must be able to verify the corresponding public key.
 
 ## Prepare a release
 
-Choose the intended non-snapshot version, update the root POM and the library
-dependency in `examples/pom.xml`, and update version references in the README,
-examples, and wiki. Commit these changes under the maintainer's identity. Keep the
-examples' library dependency aligned with the artifact being tested.
+Choose the intended non-snapshot version, update the root POM, the library
+dependency in `examples/pom.xml`, and both the CLI version and `androspecter.version`
+in `cli/pom.xml`. Update version references in the README, CLI guide, examples,
+and wiki. Commit these changes under the maintainer's identity. Keep the consumers'
+library dependencies aligned with the artifact being tested.
 
 With the release version in place, create the signed bundle locally:
 
@@ -74,6 +77,20 @@ publication is disabled: complete publication from the Portal after reviewing th
 validated deployment. Confirm that the released Maven coordinates resolve before
 creating the corresponding Git tag/release and moving the checkout to its next
 development version.
+
+## Standalone CLI distribution
+
+After installing the selected library version locally, build the separate CLI with
+`mvn -f cli/pom.xml clean verify`. Smoke-test `java -jar cli/target/androspecter-cli.jar
+--help`, metadata extraction, real APK analysis, and an exported offline HTML graph.
+The distribution is `cli/target/androspecter-cli.jar`, including its runtime
+dependencies and logging provider. Do not distribute the unshaded
+`original-androspecter-cli.jar` as the executable.
+
+Attach the executable JAR and its SHA-256 checksum to the corresponding GitHub
+release when publishing that release. The CLI POM does not inherit the library's
+Central profile; the library's Maven release does not upload the standalone CLI.
+The launcher can use a downloaded artifact through `ANDROSPECTER_JAR=/path/to/file.jar`.
 
 ## Development snapshots
 

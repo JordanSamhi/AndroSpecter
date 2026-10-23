@@ -1,0 +1,17 @@
+</style>
+</head>
+<body>
+<header class="topbar"><div><span class="eyebrow">ANDROSPECTER · OFFLINE EXPLORER</span><h1>Call graph</h1></div><p id="graph-summary">Loading graph…</p></header>
+<main class="workspace">
+  <aside class="panel methods"><h2>Methods</h2><label for="method-search">Search every method</label><input id="method-search" type="search" placeholder="Class, method, or signature" autocomplete="off" spellcheck="false"><p id="search-status" class="muted" role="status"></p><div id="method-list" class="method-list"></div><div class="pagination"><button id="search-previous" type="button">Previous</button><button id="search-next" type="button">Next</button></div></aside>
+  <section class="graph-panel panel" aria-label="Directed call graph">
+    <div class="toolbar"><div><label for="direction">One-hop neighborhood</label><select id="direction"><option value="both">Callers and callees</option><option value="callers">Callers only</option><option value="callees">Callees only</option></select></div><div class="zoom"><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="fit-graph" type="button">Fit</button></div></div>
+    <p class="graph-help">Arrows point from caller to callee. Click a method to explore it. Drag to pan; scroll to zoom.</p>
+    <div id="graph-stage" class="graph-stage"><svg id="graph-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Interactive method neighborhood"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><g id="graph-edges"></g><g id="graph-nodes"></g></svg><p id="graph-empty" class="empty-state" hidden>No methods in this snapshot.</p></div>
+    <p id="view-status" class="view-status" role="status"></p>
+  </section>
+  <aside class="panel inspector"><h2>Selection</h2><div id="method-details"><p class="muted">Select a method to inspect its full signature and calls.</p></div></aside>
+</main>
+<footer>Static analysis describes possible calls, not observed execution. All graph data stays in this file. Visible graphs show at most 60 methods and 180 source/target/kind relationships; parallel calls retain their counts and metadata.</footer>
+<noscript><p class="noscript">Enable JavaScript to explore this local graph. No internet connection is needed.</p></noscript>
+<script id="graph-data" type="application/json">

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cli_jar="${ANDROSPECTER_JAR:-$script_dir/../cli/target/androspecter-cli.jar}"
+if [[ ! -f "$cli_jar" ]]; then
+    echo "CLI JAR not found: $cli_jar" >&2
+    echo "Build the library with mvn install, then run mvn -f cli/pom.xml package." >&2
+    exit 1
+fi
+java_command=java
+if [[ -n "${JAVA_HOME:-}" ]]; then
+    java_command="$JAVA_HOME/bin/java"
+fi
+exec "$java_command" -jar "$cli_jar" "$@"

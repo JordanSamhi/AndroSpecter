@@ -4,15 +4,17 @@
 
 # AndroSpecter
 
-**Android static analysis from Java, with simpler Soot and FlowDroid APIs.**
+**Android static analysis as a Java library or command-line tool.**
 
-AndroSpecter helps you build call graphs, inspect classes and invocations, run
-source-to-sink taint analyses, and compose instrumentation. It is a **library**:
-your application controls execution, cancellation, logging, and output.
+AndroSpecter wraps Soot and FlowDroid to help you build call graphs, inspect classes and invocations, run
+source-to-sink taint analyses, and compose instrumentation. Use it as a **Java library**,
+where your application controls execution, cancellation, logging, and output, or as
+a **standalone command-line tool** for common analysis and export tasks.
 
 [Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started) ·
 [Wiki](https://github.com/JordanSamhi/AndroSpecter/wiki) ·
 [Runnable examples](examples/README.md) ·
+[Command-line tool](cli/README.md) ·
 [Contributing](CONTRIBUTING.md)
 
 ## What you can do
@@ -22,7 +24,7 @@ your application controls execution, cancellation, logging, and output.
 | Open an APK analysis and manage its lifetime | `AndroidAnalysis`, `AnalysisContext` | [Analysis sessions](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions) |
 | Read manifest metadata without an SDK or Soot session | `ApkInfo` | [APK metadata](https://github.com/JordanSamhi/AndroSpecter/wiki/APK-metadata) |
 | Query callers, reachability, shortest call paths, and filtered subgraphs after analysis closes | `CallGraphSnapshot` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
-| Save, reload, visualize, and compare graphs | `GraphJson`, `GraphDot`, `GraphDifference` | [Graph export and comparison](https://github.com/JordanSamhi/AndroSpecter/wiki/Graph-export-and-comparison) |
+| Save, reload, visualize, and compare graphs | `GraphJson`, `GraphDot`, `GraphHtml`, `GraphDifference` | [Graph export and comparison](https://github.com/JordanSamhi/AndroSpecter/wiki/Graph-export-and-comparison) |
 | Visit only the classes, methods, statements, or invocations you need | `Inspection`, `LibraryFilter` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
 | Obtain structured findings with sources, sinks, paths, and status | `SourceSinkConfiguration`, `TaintAnalysisResult` | [Taint analysis](https://github.com/JordanSamhi/AndroSpecter/wiki/Taint-analysis) |
 | Apply scoped logging probes and ordered transformations | `Logger`, `TransformationPipeline` | [Instrumentation](https://github.com/JordanSamhi/AndroSpecter/wiki/Instrumentation) |
@@ -76,7 +78,41 @@ configuration. If your application has no provider yet, it can select one:
 Use one compatible SLF4J 2.x provider. See [Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started)
 for a complete Maven setup and the distinction between local and published versions.
 
-## Your first analysis
+## Standalone command-line tool
+
+Build the library, then the executable CLI (Java 17 or later):
+
+```sh
+mvn -B install
+mvn -B -f cli/pom.xml package
+java -jar cli/target/androspecter-cli.jar --help
+```
+
+From the repository, `bin/androspecter` launches that same JAR. These commands read
+metadata, build a graph, and turn the saved graph into an interactive offline page:
+
+```sh
+bin/androspecter metadata --apk app.apk --format text
+bin/androspecter graph --apk app.apk --platforms /path/to/sdk/platforms \
+  --package com.example.app --format json -o callgraph.json
+bin/androspecter graph --input-json callgraph.json --format html -o callgraph.html
+```
+
+Open `callgraph.html` directly in a browser to search methods, follow callers and
+callees, inspect call sites, and pan or zoom. No server or network connection is
+needed. The viewer shows a bounded neighborhood and reports omitted items; the
+file retains the entire exported graph. `--package` selects an induced subgraph,
+so calls crossing that scope are omitted. Remove it to export the full graph.
+
+The CLI also supports DOT export, class-only inspection, offline reachability and
+shortest-path queries, and taint analysis. JSON results go to standard output by
+default; logs go to standard error. Existing files require `--overwrite`.
+See the [CLI guide](cli/README.md) for all commands, exit codes, filtering, and timeouts.
+
+The executable JAR contains its dependencies and logging provider. The library
+artifacts remain available independently with their existing logging contract.
+
+## Your first library analysis
 
 This complete class opens an APK, builds its Android entry points and CHA call
 graph, then queries the detached graph after the analysis has closed:
@@ -160,8 +196,8 @@ instead of `:` between classpath entries.
 | `CancelAnalysis` | A caller-owned cancellation token and cooperative deadline |
 
 The [example README](examples/README.md) contains every command and expected
-behavior. These programs are executable consumers of the library. AndroSpecter's
-own JAR has no command-line entry point.
+behavior. These programs are executable consumers of the library. For a ready-made
+command-line application, use the separate [CLI distribution](cli/README.md).
 
 ## Lifecycle and result semantics
 
