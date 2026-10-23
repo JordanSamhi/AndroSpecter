@@ -44,7 +44,6 @@ public class SootConfig implements IInfoflowConfig {
      * @param config  the analysis configuration
      */
     public void setSootOptions(Options options, InfoflowConfiguration config) {
-        Options.v().set_process_multiple_dex(true);
         Options.v().set_allow_phantom_refs(true);
         Options.v().set_output_format(Options.output_format_none);
         Options.v().set_whole_program(true);

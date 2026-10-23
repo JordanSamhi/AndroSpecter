@@ -416,7 +416,6 @@ public class SootUtils {
      */
     public void setupSoot(String platformPath, String apkPath, boolean wholeAnalysis) {
         G.reset();
-        Options.v().set_process_multiple_dex(true);
         Options.v().set_allow_phantom_refs(true);
         Options.v().set_output_format(Options.output_format_none);
         Options.v().set_whole_program(wholeAnalysis);
@@ -464,7 +463,6 @@ public class SootUtils {
      */
     public void setupSootWithOutput(String platformPath, String apkPath, String outputPath, boolean wholeAnalysis) {
         G.reset();
-        Options.v().set_process_multiple_dex(true);
         Options.v().set_allow_phantom_refs(true);
         Options.v().set_output_format(Options.output_format_dex);
         Options.v().set_output_dir(outputPath);

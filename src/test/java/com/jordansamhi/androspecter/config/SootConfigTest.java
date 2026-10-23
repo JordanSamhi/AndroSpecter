@@ -24,7 +24,6 @@ class SootConfigTest {
     @Test
     void testSetSootOptions() {
         // Resetting the Soot Options
-        options.set_process_multiple_dex(false);
         options.set_allow_phantom_refs(false);
         options.set_output_format(Options.output_format_dex);
         options.set_whole_program(false);
@@ -33,7 +32,6 @@ class SootConfigTest {
         sootConfig.setSootOptions(options, infoflowConfiguration);
 
         // Asserting the Options have been set correctly
-        assertTrue(options.process_multiple_dex());
         assertTrue(options.allow_phantom_refs());
         assertEquals(Options.output_format_none, options.output_format());
         assertTrue(options.whole_program());

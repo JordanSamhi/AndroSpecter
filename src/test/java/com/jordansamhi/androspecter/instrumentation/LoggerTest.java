@@ -5,11 +5,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jf.dexlib2.DexFileFactory;
-import org.jf.dexlib2.Opcode;
-import org.jf.dexlib2.Opcodes;
-import org.jf.dexlib2.iface.ClassDef;
-import org.jf.dexlib2.iface.instruction.Instruction;
+import com.android.tools.smali.dexlib2.DexFileFactory;
+import com.android.tools.smali.dexlib2.Opcode;
+import com.android.tools.smali.dexlib2.Opcodes;
+import com.android.tools.smali.dexlib2.iface.ClassDef;
+import com.android.tools.smali.dexlib2.iface.instruction.Instruction;
 import soot.*;
 import soot.baf.BafASMBackend;
 import soot.jimple.*;
@@ -245,7 +245,7 @@ class LoggerTest {
             if (!clazz.getType().equals("L" + Constants.LOG_CHECKER_CLASS + ";")) {
                 continue;
             }
-            for (org.jf.dexlib2.iface.Method method : clazz.getMethods()) {
+            for (com.android.tools.smali.dexlib2.iface.Method method : clazz.getMethods()) {
                 if (!Arrays.asList("log", "addLog", "alreadyLogged").contains(method.getName())) {
                     continue;
                 }

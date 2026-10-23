@@ -85,7 +85,6 @@ public class FlowdroidUtils {
         InfoflowAndroidConfiguration ifac = new InfoflowAndroidConfiguration();
         ifac.getAnalysisFileConfig().setAndroidPlatformDir(new File(platformPath));
         ifac.getAnalysisFileConfig().setTargetAPKFile(new File(this.apkPath));
-        ifac.setMergeDexFiles(true);
         ifac.setCodeEliminationMode(InfoflowConfiguration.CodeEliminationMode.NoCodeElimination);
         ifac.getPathConfiguration().setPathReconstructionMode(InfoflowConfiguration.PathReconstructionMode.Precise);
         SetupApplication sa = createSetupApplication(ifac);

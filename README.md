@@ -30,15 +30,23 @@ For a comprehensive guide, examples, and detailed documentation of all features 
 
 ## Building and testing
 
-Use JDK 11 or later and Maven. The pinned Soot dependency requires Java 11;
+Use JDK 17 or later and Maven. FlowDroid 2.15.1 requires Java 17;
 the library is compiled for that same minimum version.
+
+The analysis dependencies are pinned to Soot **4.7.1** and FlowDroid **2.15.1**
+(`soot-infoflow`, `soot-infoflow-android`, and `soot-infoflow-summaries`).
+FlowDroid 2.15.1 itself depends on Soot 4.7.1. Their versions are centralized in
+the `soot.version` and `flowdroid.version` Maven properties.
+
+Upgrading from the previous dependency set (Soot 4.6.0 / FlowDroid 2.14.1)
+requires upgrading Java 11 installations to Java 17 or later.
 
 ```sh
 mvn test
-mvn package
+mvn clean verify
 ```
 
-The tests use synthetic Soot bodies, temporary files, and fake service connections.
+The tests use synthetic Soot bodies, generated DEX files, temporary files, and fake service connections.
 They do not require Redis, an AndroZoo API key, an Android SDK, or a device.
 Analyzing real APKs still requires the Android platform JARs.
 
@@ -48,6 +56,8 @@ Analyzing real APKs still requires the Android platform JARs.
   state; helper queries reflect the current scene and call graph. Class and method
   totals can include loaded framework classes. Library exclusion uses the bundled
   package-prefix list, independently of Soot's application-class flag.
+- Multidex APKs are processed by default in Soot 4.7.1. The removed
+  `process_multiple_dex` and FlowDroid `mergeDexFiles` options are no longer needed.
 - `FlowdroidUtils.runTaintAnalysis` throws `IllegalStateException` when analysis
   fails, returns no result, or terminates early. Only a successful analysis with no
   detected flows returns an empty set. Detected flows remain in the report when
