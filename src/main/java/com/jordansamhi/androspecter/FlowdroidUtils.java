@@ -1,6 +1,7 @@
 package com.jordansamhi.androspecter;
 
 import com.jordansamhi.androspecter.config.SootConfig;
+import com.jordansamhi.androspecter.analysis.InitializationMode;
 import com.jordansamhi.androspecter.printers.Writer;
 import com.jordansamhi.androspecter.result.AnalysisStatus;
 import com.jordansamhi.androspecter.result.TaintAnalysisResult;
@@ -9,6 +10,8 @@ import com.jordansamhi.androspecter.result.TaintFinding;
 import com.jordansamhi.androspecter.result.TaintPathStep;
 import com.jordansamhi.androspecter.result.TaintResultFormatter;
 import soot.G;
+import soot.Main;
+import soot.PackManager;
 import soot.Scene;
 import soot.SootClass;
 import soot.SootMethod;
@@ -16,6 +19,7 @@ import soot.Unit;
 import soot.jimple.Stmt;
 import soot.jimple.infoflow.InfoflowConfiguration;
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
+import soot.jimple.infoflow.android.AndroidLibraryClassPatcher;
 import soot.jimple.infoflow.android.SetupApplication;
 import soot.jimple.infoflow.android.data.AndroidMethod;
 import soot.jimple.infoflow.android.manifest.ProcessManifest;
@@ -24,6 +28,7 @@ import soot.jimple.infoflow.results.InfoflowResults;
 import soot.jimple.infoflow.results.ResultSinkInfo;
 import soot.jimple.infoflow.results.ResultSourceInfo;
 import soot.jimple.infoflow.results.AbstractResultSourceSinkInfo;
+import soot.options.Options;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -147,6 +152,40 @@ public class FlowdroidUtils {
      */
     public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo,
                                                Consumer<InfoflowAndroidConfiguration> customizer) {
+        return initializeFlowdroidInternal(platformPath, config, callGraphAlgo, customizer, false);
+    }
+
+    /**
+     * Initializes either an eager Android analysis or a class-only scene for later promotion.
+     * Class-only initialization loads APK classes with the configured Android/additional classpath,
+     * prepares Jimple and patches framework models, but does not discover callbacks or build a graph.
+     * The returned backend uses the existing scene when constructing a graph or running taint later,
+     * preserving bodies modified in the meantime. This method otherwise shares the customizer
+     * overload's defaults, ownership, and cancellation contracts.
+     *
+     * @param platformPath non-null Android platforms directory or platform JAR
+     * @param config Soot-options callback, or null for this library's defaults
+     * @param callGraphAlgo supported algorithm, or null for CHA
+     * @param customizer non-null backend configuration callback applied before loading
+     * @param mode non-null amount of initialization to perform
+     * @return live backend application bound to the newly initialized Soot scene
+     * @throws NullPointerException if a required argument is null
+     * @throws IllegalArgumentException if the algorithm or class-only integration mode is unsupported
+     * @throws CancellationException if cancellation or interruption is observed
+     * @throws RuntimeException if customization, class loading, or graph construction fails
+     */
+    public SetupApplication initializeFlowdroid(String platformPath, IInfoflowConfig config, String callGraphAlgo,
+                                               Consumer<InfoflowAndroidConfiguration> customizer,
+                                               InitializationMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        if (mode == InitializationMode.EAGER) {
+            return initializeFlowdroid(platformPath, config, callGraphAlgo, customizer);
+        }
+        return initializeFlowdroidInternal(platformPath, config, callGraphAlgo, customizer, true);
+    }
+
+    private SetupApplication initializeFlowdroidInternal(String platformPath, IInfoflowConfig config,
+            String callGraphAlgo, Consumer<InfoflowAndroidConfiguration> customizer, boolean classesOnly) {
         this.initialized = false;
         this.sa = null;
         this.abortRequested = false;
@@ -168,16 +207,21 @@ public class FlowdroidUtils {
         ifac.getPathConfiguration().setPathReconstructionMode(InfoflowConfiguration.PathReconstructionMode.Precise);
         ifac.setCallgraphAlgorithm(cgAlgo);
         customizer.accept(ifac);
-        SetupApplication sa = createSetupApplication(ifac);
-        if (config == null) {
-            sa.setSootConfig(new SootConfig());
-        } else {
-            sa.setSootConfig(config);
+        if (classesOnly && ifac.getSootIntegrationMode()
+                != InfoflowConfiguration.SootIntegrationMode.CreateNewInstance) {
+            throw new IllegalArgumentException("Class-only initialization must create its own Soot scene");
         }
+        SetupApplication sa = createSetupApplication(ifac);
+        IInfoflowConfig sootConfig = config == null ? new SootConfig() : config;
+        sa.setSootConfig(sootConfig);
         this.sa = sa;
         try {
             checkInitializationCancellation(sa);
-            sa.constructCallgraph();
+            if (classesOnly) {
+                loadSootClasses(ifac, sootConfig);
+            } else {
+                sa.constructCallgraph();
+            }
             checkInitializationCancellation(sa);
             ifac.setSootIntegrationMode(InfoflowAndroidConfiguration.SootIntegrationMode.UseExistingInstance);
             this.initialized = true;
@@ -189,7 +233,46 @@ public class FlowdroidUtils {
     }
 
     SetupApplication createSetupApplication(InfoflowAndroidConfiguration configuration) {
-        return new SetupApplication(configuration);
+        return new ReusableSetupApplication(configuration);
+    }
+
+    // FlowDroid 2.15.1 keeps initializeSoot private. Mirror its loading/preparation steps
+    // without calling constructCallgraph (which would perform Android callback discovery).
+    void loadSootClasses(InfoflowAndroidConfiguration configuration, IInfoflowConfig sootConfig) {
+        File apk = configuration.getAnalysisFileConfig().getTargetAPKFile();
+        File android = configuration.getAnalysisFileConfig().getAndroidPlatformDir();
+        Options options = Options.v();
+        options.set_no_bodies_for_excluded(true);
+        options.set_allow_phantom_refs(true);
+        options.set_output_format(configuration.getWriteOutputFiles()
+                ? Options.output_format_jimple : Options.output_format_none);
+        options.set_whole_program(true);
+        options.set_process_dir(List.of(apk.getAbsolutePath()));
+        if (android.isFile()) {
+            options.set_force_android_jar(android.getAbsolutePath());
+        } else {
+            options.set_android_jars(android.getAbsolutePath());
+        }
+        options.set_src_prec(Options.src_prec_apk_class_jimple);
+        options.set_keep_offset(false);
+        options.set_keep_line_number(configuration.getEnableLineNumbers());
+        options.set_throw_analysis(Options.throw_analysis_dalvik);
+        options.set_ignore_resolution_errors(true);
+        if (configuration.getEnableOriginalNames()) {
+            options.setPhaseOption("jb", "use-original-names:true");
+        }
+        sootConfig.setSootOptions(options, configuration);
+        String classpath = android.isFile() ? android.getAbsolutePath()
+                : Scene.v().getAndroidJarPath(android.getAbsolutePath(), apk.getAbsolutePath());
+        String additional = configuration.getAnalysisFileConfig().getAdditionalClasspath();
+        if (additional != null && !additional.isEmpty()) {
+            classpath += File.pathSeparator + additional;
+        }
+        options.set_soot_classpath(classpath);
+        Main.v().autoSetOptions();
+        Scene.v().loadNecessaryClasses();
+        PackManager.v().getPack("wjpp").apply();
+        new AndroidLibraryClassPatcher().patchLibraries();
     }
 
     /**

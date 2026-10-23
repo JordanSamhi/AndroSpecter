@@ -20,7 +20,9 @@ your application controls execution, cancellation, logging, and output.
 | Task | Main APIs | Guide |
 | --- | --- | --- |
 | Open an APK analysis and manage its lifetime | `AndroidAnalysis`, `AnalysisContext` | [Analysis sessions](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions) |
-| Query callers, callees, and call sites after analysis closes | `CallGraphSnapshot` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
+| Read manifest metadata without an SDK or Soot session | `ApkInfo` | [APK metadata](https://github.com/JordanSamhi/AndroSpecter/wiki/APK-metadata) |
+| Query callers, reachability, shortest call paths, and filtered subgraphs after analysis closes | `CallGraphSnapshot` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
+| Save, reload, visualize, and compare graphs | `GraphJson`, `GraphDot`, `GraphDifference` | [Graph export and comparison](https://github.com/JordanSamhi/AndroSpecter/wiki/Graph-export-and-comparison) |
 | Visit only the classes, methods, statements, or invocations you need | `Inspection`, `LibraryFilter` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
 | Obtain structured findings with sources, sinks, paths, and status | `SourceSinkConfiguration`, `TaintAnalysisResult` | [Taint analysis](https://github.com/JordanSamhi/AndroSpecter/wiki/Taint-analysis) |
 | Apply scoped logging probes and ordered transformations | `Logger`, `TransformationPipeline` | [Instrumentation](https://github.com/JordanSamhi/AndroSpecter/wiki/Instrumentation) |
@@ -36,7 +38,8 @@ your application controls execution, cancellation, logging, and output.
 | FlowDroid | `2.15.1` |
 
 You need Maven to build the library and an Android SDK `platforms` directory
-containing platform JARs to analyze APKs. A connected Android device is not needed.
+containing platform JARs for Soot/FlowDroid analyses. Reading APK metadata and
+querying saved graph snapshots require no SDK. A connected Android device is not needed.
 
 **`1.2.0-SNAPSHOT` has not been published to Maven Central.** Install this checkout
 locally before using the examples or depending on this version:
@@ -111,9 +114,18 @@ public final class QuickStart {
 ```
 
 Use `AndroidAnalysis.builder(apk, platforms)` to select `CHA`, `RTA`, `VTA`, or
-`SPARK`, set source/sink definitions, or configure cancellation and phase limits.
+`SPARK`, configure callbacks and path reconstruction, add classpath entries, set
+source/sink definitions, or configure cancellation and phase limits. Advanced
+FlowDroid configuration is available through `configureFlowDroid(...)` while the
+session retains ownership of its APK, platform selection, and Soot lifecycle.
 The [session guide](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions)
 explains these choices and shows how to collect instance-owned metrics.
+
+For class and method inspection, choose
+`initializationMode(InitializationMode.CLASSES_ONLY)` to defer callback discovery
+and graph construction. Calling `callGraph()` or `analyzeTaint()` later prepares
+the Android graph using the loaded scene. For manifest metadata alone,
+`ApkInfo.read(apk)` does not require an SDK and does not initialize Soot.
 
 ## Run the included examples
 
@@ -139,6 +151,10 @@ instead of `:` between classpath entries.
 | Example | Demonstrates |
 | --- | --- |
 | `InspectApk` | Invocation callbacks, per-analysis metrics, and indexed graph queries |
+| `PrintApkInfo` | Manifest components, permissions, and SDK/version attributes without Soot or an SDK |
+| `InspectClasses` | Class and invocation inspection without constructing a call graph |
+| `ExportGraph` | Versioned graph JSON written after the session closes |
+| `GraphQueries` | Offline reachability, shortest paths, and DOT export from saved JSON |
 | `AnalyzeTaint` | File-based source/sink definitions, completion status, and JSON export after close |
 | `InstrumentInMemory` | Scoped logging probes, transformation composition, and graph rebuilding |
 | `CancelAnalysis` | A caller-owned cancellation token and cooperative deadline |
@@ -157,7 +173,9 @@ own JAR has no command-line entry point.
   snapshots contain detached data and survive those operations.
 - **Graphs describe static possibilities.** They include framework and generated
   entry points. Snapshot nodes are methods incident to an edge, not every method
-  declared in the APK. Large indexed snapshots require additional memory.
+  declared in the APK; manually constructed and filtered snapshots can also retain
+  isolated nodes. Reachability and shortest paths describe graph structure, not
+  proven feasible executions. Large indexed snapshots require additional memory.
 - **Check taint status.** `SUCCESS`, `FAILED`, `TIMED_OUT`, and `CANCELLED` distinguish
   completion from partial results. An empty finding list alone is not evidence
   that no flow exists. Source/sink settings are empty unless explicitly supplied.
@@ -181,11 +199,23 @@ mvn org.apache.maven.plugins:maven-javadoc-plugin:3.4.0:javadoc \
 
 Open `target/site/apidocs/index.html` for the public API reference. Tests use
 synthetic Soot bodies, generated DEX files, and local fixtures; they do not require
-an Android SDK, Redis service, or AndroZoo key. The examples require an APK and
-Android platform JARs.
+an Android SDK, Redis service, or AndroZoo key. Optional real-backend tests use the
+[reproducible APK fixture](src/test/fixtures/managed-analysis/README.md):
+
+```sh
+mvn -Dtest=AndroidAnalysisApkTest \
+    -Dandrospecter.androidPlatforms=/absolute/path/to/android-sdk/platforms test
+```
+
+Analysis examples require an APK and Android platform JARs. `PrintApkInfo` needs
+only an APK; `GraphQueries` operates on exported JSON without an SDK or Soot session.
 
 Every new or changed public API must have usage-oriented Javadoc. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the documentation requirements.
+
+The [release guide](RELEASING.md) describes local packaging checks, signing, and
+the Central Publisher Portal setup. Updating this checkout does not publish a new
+Maven artifact.
 
 ## License and contact
 

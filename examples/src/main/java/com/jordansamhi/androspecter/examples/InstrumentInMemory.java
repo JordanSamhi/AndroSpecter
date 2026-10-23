@@ -2,6 +2,7 @@ package com.jordansamhi.androspecter.examples;
 
 import com.jordansamhi.androspecter.analysis.AndroidAnalysis;
 import com.jordansamhi.androspecter.graph.CallGraphSnapshot;
+import com.jordansamhi.androspecter.graph.GraphDifference;
 import com.jordansamhi.androspecter.instrumentation.InstrumentationOptions;
 import com.jordansamhi.androspecter.instrumentation.Logger;
 import com.jordansamhi.androspecter.instrumentation.TransformationPipeline;
@@ -14,7 +15,7 @@ public final class InstrumentInMemory {
 
     /**
      * Captures the original graph, applies one logger through a transformation pipeline,
-     * and captures a rebuilt graph. Only application classes under the supplied package
+     * captures a rebuilt graph, and compares relationship multiplicities. Only classes under the supplied package
      * prefix are instrumented. No APK is exported, installed, signed, or executed.
      *
      * @param args APK path, SDK platforms directory, and application package prefix
@@ -53,6 +54,11 @@ public final class InstrumentInMemory {
                 before.methods().size(), before.edges().size());
         System.out.printf("After: %d incident methods, %d edges%n",
                 after.methods().size(), after.edges().size());
+        GraphDifference difference = GraphDifference.between(before, after);
+        System.out.println("Added edge occurrences: "
+                + difference.addedEdges().values().stream().mapToInt(Integer::intValue).sum());
+        System.out.println("Removed edge occurrences: "
+                + difference.removedEdges().values().stream().mapToInt(Integer::intValue).sum());
         System.out.println("Only the in-memory scene was changed; no APK was written.");
     }
 }

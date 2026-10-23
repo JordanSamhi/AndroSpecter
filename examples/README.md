@@ -1,13 +1,18 @@
 # Runnable Java examples
 
-These four small programs use the instance API from **AndroSpecter 1.2.0-SNAPSHOT**.
-They run locally on Java 17 with an APK and an Android SDK `platforms` directory.
+These eight small programs use **AndroSpecter 1.2.0-SNAPSHOT** on Java 17.
+Analysis programs require an APK and an Android SDK `platforms` directory;
+`PrintApkInfo` needs only an APK, and `GraphQueries` needs only a saved graph.
 They do not require a device, Redis, an AndroZoo account, or network access during analysis.
 Maven may download dependencies when building.
 
 | Program | Demonstrates |
 | --- | --- |
 | [InspectApk](src/main/java/com/jordansamhi/androspecter/examples/InspectApk.java) | Package metadata, scoped invocation metrics, detached graph queries after close |
+| [PrintApkInfo](src/main/java/com/jordansamhi/androspecter/examples/PrintApkInfo.java) | SDK/version attributes, permissions, components, and intent filters without Soot |
+| [InspectClasses](src/main/java/com/jordansamhi/androspecter/examples/InspectClasses.java) | Selected class/method/body inspection without building a call graph |
+| [ExportGraph](src/main/java/com/jordansamhi/androspecter/examples/ExportGraph.java) | Versioned JSON snapshot written after closing the session |
+| [GraphQueries](src/main/java/com/jordansamhi/androspecter/examples/GraphQueries.java) | Offline reachability, shortest paths, and reachable-subgraph DOT export |
 | [AnalyzeTaint](src/main/java/com/jordansamhi/androspecter/examples/AnalyzeTaint.java) | File-based source/sink settings, result status, findings, JSON export after close |
 | [InstrumentInMemory](src/main/java/com/jordansamhi/androspecter/examples/InstrumentInMemory.java) | Scoped Logger, transformation pipeline, graph rebuilding |
 | [CancelAnalysis](src/main/java/com/jordansamhi/androspecter/examples/CancelAnalysis.java) | Caller-owned cancellation source and deadline, cleanup on the owning thread |
@@ -33,7 +38,7 @@ The example POM declares:
 | Dependency or plugin | Version | Purpose |
 | --- | --- | --- |
 | `com.jordansamhi:androspecter` | `1.2.0-SNAPSHOT` | The locally installed library, including its transitive Soot/FlowDroid dependencies |
-| `com.google.code.gson:gson` | `2.10.1` | Explicit direct dependency used by AnalyzeTaint for JSON |
+| `com.google.code.gson:gson` | `2.14.0` | Explicit direct dependency used by AnalyzeTaint for JSON |
 | `org.slf4j:slf4j-simple` | `2.0.17` | Runtime logging provider chosen by this example application |
 | `maven-compiler-plugin` | `3.7.0` | Compile with Java release 17 |
 | `maven-dependency-plugin` | `3.6.1` | Copy runtime dependencies into `examples/target/dependency` |
@@ -58,6 +63,34 @@ APP_PREFIX=com.example.app
 `isApplicationClass()` and a class-name prefix ending in `.`: `com.example.app` does not
 select `com.example.application`. This is an explicit analysis scope, not a library detector.
 The manifest package and code packages can differ; choose the actual code package.
+
+## Read APK metadata without an SDK
+
+```sh
+java -cp 'examples/target/classes:examples/target/dependency/*' \
+  com.jordansamhi.androspecter.examples.PrintApkInfo "$APK"
+```
+
+`ApkInfo.read(Path)` reads the APK's binary manifest directly and returns detached
+immutable records. It does not initialize or reset Soot. Missing and resource-backed
+attributes remain absent from convenience values; raw typed attributes preserve the
+declaration. A component's `declaredExported()` is the explicit manifest value, not
+an inferred decision about whether Android permits external access.
+
+## Inspect classes without building a graph
+
+```sh
+java -Xmx4g -cp 'examples/target/classes:examples/target/dependency/*' \
+  com.jordansamhi.androspecter.examples.InspectClasses \
+  "$APK" "$PLATFORMS" "$APP_PREFIX"
+```
+
+This example opens `InitializationMode.CLASSES_ONLY`, then visits selected methods
+and invocation statements. It loads Soot classes and bodies without discovering
+Android callbacks or building a call graph. This is useful for API-use counts and
+local method inspection. If a consumer later calls `callGraph()` or `analyzeTaint()`,
+the session prepares the Android graph using its existing scene. The ordinary
+`AndroidAnalysis.open(...)` behavior remains eager.
 
 ## Inspect an APK
 
@@ -86,6 +119,39 @@ Inspection filters classes before loading bodies. Invocation counts are static c
 in selected concrete methods, not runtime execution counts. The full call graph can include
 framework and generated entry-point methods; it is not limited by the inspection prefix.
 Its nodes are methods incident to edges, so a declared method without edges can be absent.
+
+## Export and query a graph offline
+
+```sh
+java -Xmx4g -cp 'examples/target/classes:examples/target/dependency/*' \
+  com.jordansamhi.androspecter.examples.ExportGraph \
+  "$APK" "$PLATFORMS" /tmp/callgraph.json
+
+java -Xmx4g -cp 'examples/target/classes:examples/target/dependency/*' \
+  com.jordansamhi.androspecter.examples.GraphQueries /tmp/callgraph.json \
+  '<com.example.app.MainActivity: void onCreate(android.os.Bundle)>' \
+  '<com.example.app.Network: void send(java.lang.String)>' \
+  /tmp/reachable.dot
+```
+
+Replace both signatures with methods in the exported graph. `ExportGraph` writes
+the complete graph after closing Soot. Its output replaces any existing file and
+requires an existing parent directory. `GraphQueries` reloads it without the APK or
+Android SDK, prints reachability and a shortest call path, and optionally writes a
+DOT view of the source's reachable subgraph. The DOT destination is also replaced.
+
+Reachability includes the starting method when it belongs to the graph. Unknown
+methods yield empty traversals, `false` reachability, or an empty shortest-path list.
+A known method reaches itself with a one-node shortest path. Results describe the
+static graph; they do not prove a feasible runtime execution or taint flow.
+
+`GraphJson` uses an explicit schema version, preserves parallel edges and isolated
+nodes, and reconstructs indexes on import. Its writer-based API avoids materializing
+the entire JSON document as a string. The snapshot itself still needs memory for
+nodes, edges, and indexes. For comparisons, use `GraphDifference.between(before, after)`:
+it reports added/removed nodes and edge occurrence counts grouped by source, target,
+and edge kind, ignoring unstable statement text and positions. See the
+[graph guide](https://github.com/JordanSamhi/AndroSpecter/wiki/Graph-export-and-comparison).
 
 ## Run taint analysis and write JSON
 
@@ -134,7 +200,8 @@ java -Xmx4g -cp 'examples/target/classes:examples/target/dependency/*' \
 
 The program selects concrete methods in application classes under the explicit package
 prefix, registers method-coverage probes on an instance-owned Logger, and applies it
-through a TransformationPipeline. It compares detached graph sizes before and after:
+through a TransformationPipeline. It compares detached graph sizes and added/removed
+edge occurrence counts before and after:
 `analysis.apply(...)` invalidates the cached graph, and the next `callGraph()` rebuilds it.
 
 No APK is exported, signed, installed, or executed. A successful run demonstrates mutation
@@ -167,11 +234,16 @@ the calling application.
 
 ## Execution and resource limits
 
-Each program opens one managed session in one JVM and closes it on the creating thread.
+Each analysis program opens one managed session in one JVM and closes it on the creating thread.
 Do not run overlapping managed sessions in the same JVM, reset Soot externally while a
 session is active, or retain borrowed Soot objects after closing. Detached results can
 outlive the session. The examples print their own results to standard output; backend
 logging goes through the example application's SLF4J provider.
+
+Managed builders also expose callback options, path reconstruction modes, additional
+classpath entries, and an advanced FlowDroid configuration hook. See
+[Analysis sessions](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions)
+for configuration ordering and lifecycle restrictions.
 
 `-Xmx4g` is a starting heap budget, not a guarantee that every APK will fit. APK size,
 callbacks, libraries, and the chosen analysis affect runtime and memory. These examples

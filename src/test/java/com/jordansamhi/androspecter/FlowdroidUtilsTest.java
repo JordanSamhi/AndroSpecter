@@ -4,6 +4,7 @@ import com.jordansamhi.androspecter.result.AnalysisStatus;
 import com.jordansamhi.androspecter.result.TaintAnalysisResult;
 import com.jordansamhi.androspecter.result.TaintFinding;
 import com.jordansamhi.androspecter.result.TaintResultFormatter;
+import com.jordansamhi.androspecter.analysis.InitializationMode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +24,7 @@ import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
 import soot.jimple.infoflow.android.SetupApplication;
 import soot.jimple.infoflow.android.data.AndroidMethod;
 import soot.jimple.infoflow.data.AccessPath;
+import soot.jimple.infoflow.config.IInfoflowConfig;
 import soot.jimple.infoflow.results.InfoflowResults;
 import soot.jimple.infoflow.results.ResultSinkInfo;
 import soot.jimple.infoflow.results.ResultSourceInfo;
@@ -137,6 +139,51 @@ class FlowdroidUtilsTest {
         });
         assertEquals(123, app.getConfig().getDataFlowTimeout());
         assertEquals(123, utils.application.timeoutAtConstruction);
+    }
+
+    @Test
+    void classOnlyInitializationLoadsWithoutGraphAndReusesTheLoadedGeneration() {
+        StubUtils utils = new StubUtils();
+        SetupApplication app = utils.initializeFlowdroid(platforms.toString(), null, "CHA",
+                configuration -> configuration.getAnalysisFileConfig().setAdditionalClasspath("dependency.jar"),
+                InitializationMode.CLASSES_ONLY);
+        assertEquals(1, utils.classLoads);
+        assertEquals(0, utils.application.callGraphConstructions);
+        assertEquals("dependency.jar", utils.classLoadConfiguration.getAnalysisFileConfig().getAdditionalClasspath());
+        assertEquals(InfoflowConfiguration.SootIntegrationMode.UseExistingInstance,
+                app.getConfig().getSootIntegrationMode());
+        G generation = G.v();
+        app.constructCallgraph();
+        assertSame(generation, G.v());
+        assertEquals(1, utils.application.callGraphConstructions);
+        assertEquals(AnalysisStatus.SUCCESS, analyzeStructured(utils).status());
+    }
+
+    @Test
+    void classLoadingFailureAndCancellationLeaveWrapperUninitialized() {
+        StubUtils failing = new StubUtils();
+        failing.failClassLoading = true;
+        assertThrows(IllegalStateException.class, () -> failing.initializeFlowdroid(platforms.toString(), null,
+                "CHA", configuration -> { }, InitializationMode.CLASSES_ONLY));
+        assertThrows(IllegalStateException.class, () -> analyzeStructured(failing));
+
+        StubUtils cancelled = new StubUtils();
+        cancelled.duringClassLoading = cancelled::abortAnalysis;
+        assertThrows(java.util.concurrent.CancellationException.class, () -> cancelled.initializeFlowdroid(
+                platforms.toString(), null, "CHA", configuration -> { }, InitializationMode.CLASSES_ONLY));
+        assertTrue(cancelled.application.abortRequests > 0);
+        assertEquals(0, cancelled.application.callGraphConstructions);
+        assertThrows(IllegalStateException.class, () -> analyzeStructured(cancelled));
+    }
+
+    @Test
+    void classOnlyModeRejectsBorrowingAnUninitializedScene() {
+        StubUtils utils = new StubUtils();
+        assertThrows(IllegalArgumentException.class, () -> utils.initializeFlowdroid(platforms.toString(), null,
+                "CHA", configuration -> configuration.setSootIntegrationMode(
+                        InfoflowConfiguration.SootIntegrationMode.UseExistingInstance), InitializationMode.CLASSES_ONLY));
+        assertEquals(0, utils.classLoads);
+        assertNull(utils.application);
     }
 
     @Test
@@ -316,6 +363,10 @@ class FlowdroidUtilsTest {
     private static final class StubUtils extends FlowdroidUtils {
         StubApplication application;
         boolean failCallGraph;
+        boolean failClassLoading;
+        int classLoads;
+        InfoflowAndroidConfiguration classLoadConfiguration;
+        Runnable duringClassLoading = () -> { };
 
         StubUtils() {
             super("example.apk");
@@ -325,6 +376,16 @@ class FlowdroidUtilsTest {
         SetupApplication createSetupApplication(InfoflowAndroidConfiguration configuration) {
             application = new StubApplication(configuration, failCallGraph);
             return application;
+        }
+
+        @Override
+        void loadSootClasses(InfoflowAndroidConfiguration configuration, IInfoflowConfig sootConfig) {
+            classLoads++;
+            classLoadConfiguration = configuration;
+            duringClassLoading.run();
+            if (failClassLoading) {
+                throw new IllegalStateException("class loading failed");
+            }
         }
     }
 

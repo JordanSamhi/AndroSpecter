@@ -4,6 +4,7 @@ import com.jordansamhi.androspecter.FlowdroidUtils;
 import com.jordansamhi.androspecter.execution.CancellationSource;
 import com.jordansamhi.androspecter.execution.CancellationToken;
 import com.jordansamhi.androspecter.files.SourceSinkConfiguration;
+import com.jordansamhi.androspecter.inspection.Inspection;
 import com.jordansamhi.androspecter.result.AnalysisStatus;
 import com.jordansamhi.androspecter.result.TaintAnalysisResult;
 import org.junit.jupiter.api.AfterEach;
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import soot.G;
 import soot.Scene;
+import soot.SootClass;
+import soot.jimple.infoflow.InfoflowConfiguration;
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
 import soot.jimple.infoflow.android.SetupApplication;
 import soot.jimple.infoflow.android.data.AndroidMethod;
@@ -19,12 +22,14 @@ import soot.jimple.infoflow.config.IInfoflowConfig;
 import soot.jimple.toolkits.callgraph.CallGraph;
 
 import java.nio.file.Files;
+import java.io.File;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -250,6 +255,123 @@ class AndroidAnalysisTest {
                 () -> AndroidAnalysis.builder(apk, directory).pathTimeout(Duration.ofDays(100000)));
     }
 
+    @Test
+    void classOnlyInspectionDefersGraphAndPreservesChangesOnFirstCapture() {
+        Backend backend = new Backend();
+        try (AndroidAnalysis analysis = AndroidAnalysis.builder(apk, directory)
+                .initializationMode(InitializationMode.CLASSES_ONLY).openWith(backend)) {
+            assertFalse(Scene.v().hasCallGraph());
+            G generation = G.v();
+            SootClass added = new SootClass("example.Added");
+            analysis.apply(context -> Scene.v().addClass(added));
+            analysis.inspect(Inspection.builder().onClass(clazz ->
+                    analysis.metrics().incrementMetric("classes")).build());
+            assertEquals(1, analysis.metrics().getMetric("classes"));
+            assertEquals(0, backend.rebuilds);
+            var graph = analysis.callGraph();
+            assertEquals(1, backend.rebuilds);
+            assertSame(generation, G.v());
+            assertSame(added, Scene.v().getSootClass("example.Added"));
+            assertSame(graph, analysis.callGraph());
+            assertThrows(IllegalStateException.class,
+                    () -> AndroidAnalysis.builder(apk, directory).openWith(new Backend()));
+        }
+    }
+
+    @Test
+    void typedSettingsApplyBeforeAdvancedOverridesAndRetainedConfigIsIsolated() throws Exception {
+        Path extra = Files.createFile(directory.resolve("dependency.jar"));
+        Path[] entries = {extra, directory, extra};
+        AtomicReference<InfoflowAndroidConfiguration> retained = new AtomicReference<>();
+        var builder = AndroidAnalysis.builder(apk, directory)
+                .pathReconstruction(PathReconstructionMode.NONE)
+                .callbacks(new CallbackOptions(false, CallbackOptions.Analyzer.FAST, 17, 3))
+                .additionalClasspath(entries)
+                .configureFlowDroid(configuration -> {
+                    assertEquals(InfoflowConfiguration.PathReconstructionMode.NoPaths,
+                            configuration.getPathConfiguration().getPathReconstructionMode());
+                    assertFalse(configuration.getCallbackConfig().getEnableCallbacks());
+                    assertEquals(17, configuration.getCallbackConfig().getMaxCallbacksPerComponent());
+                    assertEquals(3, configuration.getCallbackConfig().getMaxAnalysisCallbackDepth());
+                    assertEquals(InfoflowAndroidConfiguration.CallbackAnalyzer.Fast,
+                            configuration.getCallbackConfig().getCallbackAnalyzer());
+                    configuration.setEnableReflection(true);
+                    configuration.getPathConfiguration().setPathReconstructionMode(
+                            InfoflowConfiguration.PathReconstructionMode.Fast);
+                    retained.set(configuration);
+                });
+        entries[0] = directory.resolve("missing.jar");
+        Backend backend = new Backend();
+        try (AndroidAnalysis analysis = builder.openWith(backend)) {
+            assertEquals(extra + File.pathSeparator + directory,
+                    backend.configuration.getAnalysisFileConfig().getAdditionalClasspath());
+            assertTrue(backend.configuration.getEnableReflection());
+            retained.get().setEnableReflection(false);
+            retained.get().getAnalysisFileConfig().setTargetAPKFile(new File("changed.apk"));
+            retained.get().getPathConfiguration().setPathReconstructionMode(
+                    InfoflowConfiguration.PathReconstructionMode.NoPaths);
+            assertEquals(apk.toFile(), backend.configuration.getAnalysisFileConfig().getTargetAPKFile());
+            assertEquals(InfoflowConfiguration.PathReconstructionMode.Fast,
+                    backend.configuration.getPathConfiguration().getPathReconstructionMode());
+            assertTrue(backend.configuration.getEnableReflection());
+            analysis.analyzeTaint();
+            analysis.analyzeTaint();
+            assertTrue(backend.configuration.getEnableReflection());
+            assertEquals(2, backend.taintRuns);
+        }
+        try (AndroidAnalysis ignored = builder.openWith(new Backend())) {
+            // A reused builder starts from typed settings, not the previously retained object.
+        }
+    }
+
+    @Test
+    void rejectsAdvancedChangesToManagedInputsAndOwnershipAndReleasesLease() {
+        List<Consumer<InfoflowAndroidConfiguration>> invalid = List.of(
+                configuration -> configuration.getAnalysisFileConfig().setTargetAPKFile(new File("different.apk")),
+                configuration -> configuration.getAnalysisFileConfig().setAndroidPlatformDir(new File("other-sdk")),
+                configuration -> configuration.getAnalysisFileConfig().setSourceSinkFile(new File("other-sources")),
+                configuration -> configuration.setSootIntegrationMode(
+                        InfoflowConfiguration.SootIntegrationMode.UseExistingCallgraph),
+                configuration -> configuration.setTaintAnalysisEnabled(false));
+        for (var customizer : invalid) {
+            Backend backend = new Backend();
+            assertThrows(IllegalArgumentException.class,
+                    () -> AndroidAnalysis.builder(apk, directory).configureFlowDroid(customizer).openWith(backend));
+            assertFalse(backend.initializationCompleted);
+            try (AndroidAnalysis next = AndroidAnalysis.builder(apk, directory).openWith(new Backend())) {
+                next.context().checkValid();
+            }
+        }
+    }
+
+    @Test
+    void customizerCannotReplaceSootOrLeakStaticConfiguration() {
+        assertThrows(IllegalStateException.class, () -> AndroidAnalysis.builder(apk, directory)
+                .configureFlowDroid(configuration -> G.reset()).openWith(new Backend()));
+        boolean original = InfoflowConfiguration.getOneResultPerAccessPath();
+        assertThrows(IllegalArgumentException.class, () -> AndroidAnalysis.builder(apk, directory)
+                .configureFlowDroid(configuration -> InfoflowConfiguration.setOneResultPerAccessPath(!original))
+                .openWith(new Backend()));
+        assertEquals(original, InfoflowConfiguration.getOneResultPerAccessPath());
+        try (AndroidAnalysis next = AndroidAnalysis.builder(apk, directory).openWith(new Backend())) {
+            next.context().checkValid();
+        }
+    }
+
+    @Test
+    void validatesClasspathBeforeInitializationAndAfterAdvancedCustomization() {
+        G generation = G.v();
+        assertThrows(IllegalArgumentException.class, () -> AndroidAnalysis.builder(apk, directory)
+                .additionalClasspath(directory.resolve("missing.jar")).openWith(new Backend()));
+        assertSame(generation, G.v());
+        assertThrows(IllegalArgumentException.class, () -> AndroidAnalysis.builder(apk, directory)
+                .configureFlowDroid(configuration -> configuration.getAnalysisFileConfig()
+                        .setAdditionalClasspath(directory + File.pathSeparator))
+                .openWith(new Backend()));
+        assertThrows(IllegalArgumentException.class, () -> AndroidAnalysis.builder(apk, directory)
+                .additionalClasspath(directory.resolve("unsupported" + File.pathSeparator + "path")));
+    }
+
     private final class Backend extends FlowdroidUtils {
         boolean failInitialization;
         boolean aborted;
@@ -267,6 +389,16 @@ class AndroidAnalysisTest {
         @Override
         public SetupApplication initializeFlowdroid(String platforms, IInfoflowConfig sootConfig,
                 String algorithm, Consumer<InfoflowAndroidConfiguration> customizer) {
+            return initializeStub(customizer, false);
+        }
+
+        @Override
+        public SetupApplication initializeFlowdroid(String platforms, IInfoflowConfig sootConfig,
+                String algorithm, Consumer<InfoflowAndroidConfiguration> customizer, InitializationMode mode) {
+            return initializeStub(customizer, mode == InitializationMode.CLASSES_ONLY);
+        }
+
+        private SetupApplication initializeStub(Consumer<InfoflowAndroidConfiguration> customizer, boolean classesOnly) {
             G.reset();
             if (failInitialization) {
                 throw new IllegalStateException("initialization failed");
@@ -277,7 +409,10 @@ class AndroidAnalysisTest {
             beforeConfiguration.run();
             customizer.accept(configuration);
             initializationCompleted = true;
-            Scene.v().setCallGraph(new CallGraph());
+            if (!classesOnly) {
+                Scene.v().setCallGraph(new CallGraph());
+            }
+            configuration.setSootIntegrationMode(InfoflowConfiguration.SootIntegrationMode.UseExistingInstance);
             return new SetupApplication(configuration) {
                 @Override public void constructCallgraph() {
                     rebuilds++;

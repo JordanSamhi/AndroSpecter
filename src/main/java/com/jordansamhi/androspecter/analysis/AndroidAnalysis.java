@@ -11,21 +11,29 @@ import com.jordansamhi.androspecter.result.AnalysisStatus;
 import com.jordansamhi.androspecter.result.TaintAnalysisResult;
 import soot.G;
 import soot.Scene;
+import soot.jimple.infoflow.InfoflowConfiguration;
+import soot.jimple.infoflow.android.InfoflowAndroidConfiguration;
 import soot.jimple.infoflow.android.SetupApplication;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * One Android analysis with an owned Soot lifecycle. Opening constructs the
- * Android entry points and call graph. Use try-with-resources on the creating
+ * One Android analysis with an owned Soot lifecycle. Opening normally constructs the
+ * Android entry points and call graph; class-only mode defers that work until needed.
+ * Use try-with-resources on the creating
  * thread. Only one managed analysis can be open in this JVM at a time; external
  * Soot users must also coordinate access. Detached results outlive close/reset.
  */
@@ -44,13 +52,14 @@ public final class AndroidAnalysis implements AutoCloseable {
 
     private AndroidAnalysis(AnalysisContext context, FlowdroidUtils flowdroid, SetupApplication application,
                             SourceSinkConfiguration sourcesAndSinks, CancellationToken cancellation,
-                            CancellationToken.Registration registration) {
+                            CancellationToken.Registration registration, InitializationMode initializationMode) {
         this.context = context;
         this.flowdroid = flowdroid;
         this.application = application;
         this.sourcesAndSinks = sourcesAndSinks;
         this.cancellation = cancellation;
         this.registration = registration;
+        this.graphDirty = initializationMode == InitializationMode.CLASSES_ONLY;
     }
 
     /**
@@ -151,8 +160,9 @@ public final class AndroidAnalysis implements AutoCloseable {
 
     /**
      * Returns a detached, indexed snapshot of the current call graph. Repeated calls reuse
-     * the snapshot until a transformation or taint run invalidates it. After invalidation,
-     * this method rebuilds the graph before capturing it. The snapshot contains methods
+     * the snapshot until a transformation or taint run invalidates it. In class-only mode,
+     * the first call constructs Android entry points and the graph in the existing scene.
+     * After invalidation, this method rebuilds the graph before capturing it. The snapshot contains methods
      * incident to graph edges, not every method declared in the APK.
      *
      * @return an immutable snapshot that remains usable after this session closes
@@ -230,7 +240,8 @@ public final class AndroidAnalysis implements AutoCloseable {
      * uses FlowDroid's best-effort abort hook; keep the session open until this method returns.
      * Requested cancellation or interruption produces a CANCELLED result, preserving available
      * findings; this wrapper does not clear the thread's interrupt flag. Lifecycle misuse
-     * still throws. Starting a run
+     * still throws. In class-only mode, FlowDroid constructs Android entry points and a graph
+     * as part of the run without resetting the loaded scene. Starting a run
      * invalidates the cached call graph for a subsequent {@link #callGraph()} call.
      *
      * @param configuration immutable sources and sinks to use for this run
@@ -301,7 +312,9 @@ public final class AndroidAnalysis implements AutoCloseable {
     /**
      * Mutable, caller-owned session configuration. Configure and open on one thread;
      * changing a builder does not update an already opened session. Defaults are CHA,
-     * empty source/sink settings, no explicit cancellation, and disabled phase timeouts.
+     * eager initialization, precise path reconstruction, default callback discovery,
+     * empty source/sink settings, no additional classpath or explicit cancellation,
+     * and disabled phase timeouts.
      */
     public static final class Builder {
         private final Path apk;
@@ -312,6 +325,11 @@ public final class AndroidAnalysis implements AutoCloseable {
         private Duration callbackTimeout = Duration.ZERO;
         private Duration taintTimeout = Duration.ZERO;
         private Duration pathTimeout = Duration.ZERO;
+        private InitializationMode initializationMode = InitializationMode.EAGER;
+        private PathReconstructionMode pathReconstruction = PathReconstructionMode.PRECISE;
+        private CallbackOptions callbacks = CallbackOptions.defaults();
+        private List<Path> additionalClasspath = List.of();
+        private Consumer<InfoflowAndroidConfiguration> flowDroidCustomizer = configuration -> { };
 
         private Builder(Path apk, Path platforms) {
             this.apk = Objects.requireNonNull(apk, "apk").toAbsolutePath().normalize();
@@ -327,6 +345,93 @@ public final class AndroidAnalysis implements AutoCloseable {
          */
         public Builder callGraphAlgorithm(CallGraphAlgorithm algorithm) {
             this.algorithm = Objects.requireNonNull(algorithm, "algorithm");
+            return this;
+        }
+
+        /**
+         * Selects eager graph construction or class-only loading. Class-only sessions support inspection
+         * immediately; their first graph request or taint run builds the Android model in the same scene.
+         * They remain subject to the same single-session and owning-thread requirements.
+         *
+         * @param mode non-null initialization strategy; EAGER is the default
+         * @return this builder
+         * @throws NullPointerException if {@code mode} is null
+         */
+        public Builder initializationMode(InitializationMode mode) {
+            this.initializationMode = Objects.requireNonNull(mode, "mode");
+            return this;
+        }
+
+        /**
+         * Selects reconstruction of detailed taint paths. NONE retains detected findings without requesting
+         * paths, FAST selects FlowDroid's faster reconstruction, and PRECISE is the default.
+         * A result's pathAvailable flag remains authoritative for each finding.
+         *
+         * @param mode non-null path reconstruction strategy
+         * @return this builder
+         * @throws NullPointerException if {@code mode} is null
+         */
+        public Builder pathReconstruction(PathReconstructionMode mode) {
+            this.pathReconstruction = Objects.requireNonNull(mode, "mode");
+            return this;
+        }
+
+        /**
+         * Replaces callback-discovery settings without changing the separately configured callback timeout.
+         * Disabling callbacks or limiting discovery can omit Android behavior from graph and taint results.
+         *
+         * @param options non-null immutable callback settings
+         * @return this builder
+         * @throws NullPointerException if {@code options} is null
+         */
+        public Builder callbacks(CallbackOptions options) {
+            this.callbacks = Objects.requireNonNull(options, "options");
+            return this;
+        }
+
+        /**
+         * Replaces extra library/class-directory entries added after the selected Android platform JAR.
+         * Entries are copied, normalized to absolute paths, and deduplicated in encounter order.
+         * Readability is checked when opening; wildcards and paths containing the platform classpath
+         * separator are unsupported. Extra entries provide dependencies, not additional APK inputs.
+         *
+         * @param entries non-null array of non-null JAR/file or class-directory paths; empty clears additions
+         * @return this builder
+         * @throws NullPointerException if the array or an entry is null
+         * @throws IllegalArgumentException if an entry contains the platform classpath separator
+         */
+        public Builder additionalClasspath(Path... entries) {
+            Objects.requireNonNull(entries, "entries");
+            LinkedHashSet<Path> paths = new LinkedHashSet<>();
+            for (Path entry : entries) {
+                Path normalized = Objects.requireNonNull(entry, "classpath entry").toAbsolutePath().normalize();
+                if (normalized.toString().indexOf(File.pathSeparatorChar) >= 0) {
+                    throw new IllegalArgumentException("Classpath entry contains the path separator: " + normalized);
+                }
+                paths.add(normalized);
+            }
+            additionalClasspath = List.copyOf(paths);
+            return this;
+        }
+
+        /**
+         * Replaces the advanced callback applied after typed settings and before backend construction/loading.
+         * It receives a configuration copy; supported instance values are copied back, including independent
+         * category keys, so retaining that object does not expose the live backend configuration.
+         * The callback may override ordinary options, but must not change APK/platform/source-sink file inputs,
+         * Soot integration mode, disable taint execution, reset Soot, or modify FlowDroid's static settings.
+         * These changes are rejected. Additional classpath entries are validated after customization.
+         * <p>
+         * The callback must only configure its argument: arbitrary external side effects cannot be rolled
+         * back or sandboxed. Copying is audited against the pinned FlowDroid version. Changes to global static
+         * options are unsupported and restored if detected; the callback runs synchronously on the owner thread.
+         *
+         * @param customizer non-null callback; subsequent calls replace the previous callback
+         * @return this builder
+         * @throws NullPointerException if {@code customizer} is null
+         */
+        public Builder configureFlowDroid(Consumer<InfoflowAndroidConfiguration> customizer) {
+            this.flowDroidCustomizer = Objects.requireNonNull(customizer, "customizer");
             return this;
         }
 
@@ -416,14 +521,87 @@ public final class AndroidAnalysis implements AutoCloseable {
             return Math.toIntExact(duration.getSeconds() + (duration.getNano() == 0 ? 0 : 1));
         }
 
+        private void customizeConfiguration(InfoflowAndroidConfiguration configuration) {
+            cancellation.throwIfCancellationRequested();
+            configuration.getCallbackConfig().setCallbackAnalysisTimeout(seconds(callbackTimeout));
+            configuration.setDataFlowTimeout(seconds(taintTimeout));
+            configuration.getPathConfiguration().setPathReconstructionTimeout(seconds(pathTimeout));
+            configuration.getPathConfiguration().setPathReconstructionMode(switch (pathReconstruction) {
+                case NONE -> InfoflowConfiguration.PathReconstructionMode.NoPaths;
+                case FAST -> InfoflowConfiguration.PathReconstructionMode.Fast;
+                case PRECISE -> InfoflowConfiguration.PathReconstructionMode.Precise;
+            });
+            configuration.getCallbackConfig().setEnableCallbacks(callbacks.enabled());
+            configuration.getCallbackConfig().setCallbackAnalyzer(callbacks.analyzer() == CallbackOptions.Analyzer.DEFAULT
+                    ? InfoflowAndroidConfiguration.CallbackAnalyzer.Default
+                    : InfoflowAndroidConfiguration.CallbackAnalyzer.Fast);
+            configuration.getCallbackConfig().setMaxCallbacksPerComponent(callbacks.maxCallbacksPerComponent());
+            configuration.getCallbackConfig().setMaxAnalysisCallbackDepth(callbacks.maxAnalysisDepth());
+            configuration.getAnalysisFileConfig().setAdditionalClasspath(additionalClasspath.stream()
+                    .map(Path::toString).collect(Collectors.joining(File.pathSeparator)));
+
+            InfoflowAndroidConfiguration edited = FlowDroidConfigurationCopy.copy(configuration);
+            G generation = G.v();
+            boolean oneResultPerAccessPath = InfoflowConfiguration.getOneResultPerAccessPath();
+            String baseDirectory = InfoflowConfiguration.getBaseDirectory();
+            boolean activityEntryMethods = InfoflowAndroidConfiguration.getCreateActivityEntryMethods();
+            try {
+                flowDroidCustomizer.accept(edited);
+                cancellation.throwIfCancellationRequested();
+                if (G.v() != generation) {
+                    throw new IllegalStateException("FlowDroid customizer must not reset Soot");
+                }
+                if (oneResultPerAccessPath != InfoflowConfiguration.getOneResultPerAccessPath()
+                        || !Objects.equals(baseDirectory, InfoflowConfiguration.getBaseDirectory())
+                        || activityEntryMethods != InfoflowAndroidConfiguration.getCreateActivityEntryMethods()) {
+                    throw new IllegalArgumentException("FlowDroid customizer must not change global static settings");
+                }
+                if (!samePath(edited.getAnalysisFileConfig().getTargetAPKFile(), apk)
+                        || !samePath(edited.getAnalysisFileConfig().getAndroidPlatformDir(), platforms)
+                        || !Objects.equals(edited.getAnalysisFileConfig().getSourceSinkFile(),
+                                configuration.getAnalysisFileConfig().getSourceSinkFile())) {
+                    throw new IllegalArgumentException("FlowDroid customizer must not change managed input files");
+                }
+                if (edited.getSootIntegrationMode() != configuration.getSootIntegrationMode()
+                        || !edited.isTaintAnalysisEnabled()) {
+                    throw new IllegalArgumentException("FlowDroid customizer must preserve Soot ownership and taint execution");
+                }
+                validateClasspath(edited.getAnalysisFileConfig().getAdditionalClasspath());
+                FlowDroidConfigurationCopy.copyInto(edited, configuration);
+            } finally {
+                InfoflowConfiguration.setOneResultPerAccessPath(oneResultPerAccessPath);
+                InfoflowConfiguration.setBaseDirectory(baseDirectory);
+                InfoflowAndroidConfiguration.setCreateActivityEntryMethods(activityEntryMethods);
+            }
+        }
+
+        private static boolean samePath(File actual, Path expected) {
+            return actual != null && actual.toPath().toAbsolutePath().normalize().equals(expected);
+        }
+
+        private static void validateClasspath(String classpath) {
+            if (classpath == null || classpath.isEmpty()) {
+                return;
+            }
+            for (String entry : classpath.split(Pattern.quote(File.pathSeparator), -1)) {
+                if (entry.isEmpty()) {
+                    throw new IllegalArgumentException("Additional classpath must not contain empty entries");
+                }
+                Path path = Path.of(entry);
+                if ((!Files.isRegularFile(path) && !Files.isDirectory(path)) || !Files.isReadable(path)) {
+                    throw new IllegalArgumentException("Additional classpath entry is not readable: " + path);
+                }
+            }
+        }
+
         /**
          * Validates paths, acquires exclusive managed-session ownership, resets Soot, and
-         * constructs the entry points and call graph synchronously. Close the returned
+         * loads classes and, in eager mode, constructs entry points and the call graph synchronously. Close the returned
          * session on this thread before opening another. If opening fails, acquired
          * ownership is released and initialization cleanup is attempted.
          *
          * @return the initialized session using this builder's current settings
-         * @throws IllegalArgumentException if the APK is unreadable or platforms is not a directory
+         * @throws IllegalArgumentException if paths/classpath are invalid or customization changes protected settings
          * @throws IllegalStateException if another managed session is open
          * @throws CancellationException if the token is cancelled or this thread is interrupted
          * @throws RuntimeException if backend initialization or cancellation registration fails
@@ -441,6 +619,8 @@ public final class AndroidAnalysis implements AutoCloseable {
             if (!Files.isDirectory(platforms)) {
                 throw new IllegalArgumentException("Android platforms directory is missing: " + platforms);
             }
+            validateClasspath(additionalClasspath.stream().map(Path::toString)
+                    .collect(Collectors.joining(File.pathSeparator)));
             UUID id = UUID.randomUUID();
             if (!ACTIVE.compareAndSet(null, id)) {
                 throw new IllegalStateException("Another AndroidAnalysis is open; close it before opening a new analysis");
@@ -453,16 +633,10 @@ public final class AndroidAnalysis implements AutoCloseable {
                 cancellation.throwIfCancellationRequested();
                 initializationStarted = true;
                 SetupApplication application = flowdroid.initializeFlowdroid(platforms.toString(), null,
-                        algorithm.name(), configuration -> {
-                            // The wrapper resets its cancellation latch during initialization.
-                            cancellation.throwIfCancellationRequested();
-                            configuration.getCallbackConfig().setCallbackAnalysisTimeout(seconds(callbackTimeout));
-                            configuration.setDataFlowTimeout(seconds(taintTimeout));
-                            configuration.getPathConfiguration().setPathReconstructionTimeout(seconds(pathTimeout));
-                        });
+                        algorithm.name(), this::customizeConfiguration, initializationMode);
                 cancellation.throwIfCancellationRequested();
                 return new AndroidAnalysis(AnalysisContext.capture(id, cancellation), flowdroid,
-                        application, sourcesAndSinks, cancellation, registration);
+                        application, sourcesAndSinks, cancellation, registration, initializationMode);
             } catch (RuntimeException | Error ex) {
                 if (registration != null) {
                     try {
