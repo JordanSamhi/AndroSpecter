@@ -1,5 +1,5 @@
 <p align="center">
-<img width="1200px" src="https://github.com/JordanSamhi/AndroSpecter/blob/main/data/androspecter_logo.png">
+<img width="1200px" src="data/androspecter_logo_v2.png" alt="AndroSpecter logo">
 </p> 
 
 # AndroSpecter Library
