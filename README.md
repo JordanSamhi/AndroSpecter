@@ -1,18 +1,54 @@
 <p align="center">
-<img width="1200px" src="data/androspecter_logo_v2.png" alt="AndroSpecter logo">
-</p> 
+  <img width="1000" src="data/androspecter_logo_v2.png" alt="AndroSpecter logo">
+</p>
 
-# AndroSpecter Library
+# AndroSpecter
 
-AndroSpecter wraps Soot and FlowDroid to make Android call-graph construction,
-taint analysis, code inspection, and instrumentation easier to use from Java.
-The calling application owns execution, logging, and result presentation.
+**Android static analysis from Java, with simpler Soot and FlowDroid APIs.**
 
-## Getting Started
+AndroSpecter helps you build call graphs, inspect classes and invocations, run
+source-to-sink taint analyses, and compose instrumentation. It is a **library**:
+your application controls execution, cancellation, logging, and output.
 
-### Importing with Maven
+[Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started) ·
+[Wiki](https://github.com/JordanSamhi/AndroSpecter/wiki) ·
+[Runnable examples](examples/README.md) ·
+[Contributing](CONTRIBUTING.md)
 
-You can use **AndroSpecter** in your Maven project by adding the following dependency to your `pom.xml` file:
+## What you can do
+
+| Task | Main APIs | Guide |
+| --- | --- | --- |
+| Open an APK analysis and manage its lifetime | `AndroidAnalysis`, `AnalysisContext` | [Analysis sessions](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions) |
+| Query callers, callees, and call sites after analysis closes | `CallGraphSnapshot` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
+| Visit only the classes, methods, statements, or invocations you need | `Inspection`, `LibraryFilter` | [Graphs and inspection](https://github.com/JordanSamhi/AndroSpecter/wiki/Call-graphs-and-inspection) |
+| Obtain structured findings with sources, sinks, paths, and status | `SourceSinkConfiguration`, `TaintAnalysisResult` | [Taint analysis](https://github.com/JordanSamhi/AndroSpecter/wiki/Taint-analysis) |
+| Apply scoped logging probes and ordered transformations | `Logger`, `TransformationPipeline` | [Instrumentation](https://github.com/JordanSamhi/AndroSpecter/wiki/Instrumentation) |
+| Choose deadlines and logging behavior in the calling application | `CancellationSource`, `Deadline`, SLF4J | [Execution and logging](https://github.com/JordanSamhi/AndroSpecter/wiki/Cancellation-and-logging) |
+
+## Requirements and installation
+
+| Component | Version used by this checkout |
+| --- | --- |
+| Java | 17 or later |
+| AndroSpecter | `1.2.0-SNAPSHOT` — local development build |
+| Soot | `4.7.1` |
+| FlowDroid | `2.15.1` |
+
+You need Maven to build the library and an Android SDK `platforms` directory
+containing platform JARs to analyze APKs. A connected Android device is not needed.
+
+**`1.2.0-SNAPSHOT` has not been published to Maven Central.** Install this checkout
+locally before using the examples or depending on this version:
+
+```sh
+git clone https://github.com/JordanSamhi/AndroSpecter.git
+cd AndroSpecter
+mvn clean install
+```
+
+Check `java -version` and `mvn -version` if Maven uses a different JDK from your
+shell. In your application's `pom.xml`, add:
 
 ```xml
 <dependency>
@@ -22,154 +58,8 @@ You can use **AndroSpecter** in your Maven project by adding the following depen
 </dependency>
 ```
 
-`1.2.0-SNAPSHOT` is the current development version, not a published Maven Central
-release. Run `mvn clean install` in this checkout before consuming it locally.
-Published versions are listed [here](https://mvnrepository.com/artifact/com.jordansamhi/androspecter).
-
-### Open an analysis and query its graph
-
-```java
-import com.jordansamhi.androspecter.analysis.AndroidAnalysis;
-import com.jordansamhi.androspecter.analysis.CallGraphAlgorithm;
-import com.jordansamhi.androspecter.graph.CallGraphSnapshot;
-import java.nio.file.Path;
-
-CallGraphSnapshot graph;
-try (AndroidAnalysis analysis = AndroidAnalysis.builder(
-        Path.of("app.apk"), Path.of("/path/to/android-sdk/platforms"))
-        .callGraphAlgorithm(CallGraphAlgorithm.CHA)
-        .open()) {
-    graph = analysis.callGraph();
-    System.out.println(analysis.packageName());
-}
-
-// Detached strings and immutable collections remain valid after close/G.reset().
-String method = "<example.MainActivity: void onCreate(android.os.Bundle)>";
-System.out.println(graph.calleesOf(method));
-System.out.println(graph.callersOf(method));
-System.out.println(graph.containsMethod(method));
-```
-
-`open()` constructs Android entry points and a call graph. Supported algorithms
-are `CHA`, `RTA`, `VTA`, and `SPARK`. A snapshot indexes callers, callees, incoming
-and outgoing edges, and membership queries once. Edges retain their call-site
-text, position when available, and kind; parallel edges are preserved. Nodes are
-methods incident to edges, including framework and generated entry points, not
-all declared methods. `analysisId()` links each snapshot to its originating session.
-Snapshots of a large graph consume additional memory.
-
-One managed session may be open in a JVM at a time. Use and close it on the thread
-that opened it. Opening another session fails rather than replacing the first.
-Closing resets its owned Soot state; external `G.reset()` calls invalidate its
-context. External Soot users must also coordinate global access. Use separate
-processes for parallel analyses. Live `SootClass`, `SootMethod`, and `Unit` values
-borrowed during callbacks must not be reused after a reset or close.
-Closing a borrowed `analysis.context()` only invalidates live access; always
-close `AndroidAnalysis` itself to release ownership and backend resources.
-
-### Inspect only what you need
-
-```java
-import com.jordansamhi.androspecter.inspection.Inspection;
-import com.jordansamhi.androspecter.inspection.LibraryFilter;
-import soot.SootClass;
-
-analysis.inspect(Inspection.builder()
-    .classes(SootClass::isApplicationClass)
-    .excludeLibraries(LibraryFilter.packages("androidx", "com.vendor.sdk"))
-    .methods(method -> method.getName().equals("onCreate"))
-    .onInvoke((method, statement, invocation) ->
-        analysis.metrics().incrementMetric("invocations"))
-    .build());
-
-var metrics = analysis.metrics().snapshot();
-```
-
-Callbacks are optional: `onClass`, `onMethod`, `onStatement`, and `onInvoke`.
-Predicates run before bodies are loaded. Class/method-only inspections do not
-load bodies; an inspection with no callbacks does no traversal. Inspection
-callbacks should observe code; use transformations for mutations.
-`LibraryFilter` is a predicate and supports normal `and`, `or`, and `negate`
-composition. `knownLibraries()` explicitly opts into the bundled legacy list.
-Metrics and source/sink settings belong to each session; no singleton reset is
-needed. Metric snapshots are detached and immutable.
-
-### Get structured taint findings
-
-```java
-import com.jordansamhi.androspecter.files.SourceSinkConfiguration;
-import com.jordansamhi.androspecter.result.TaintAnalysisResult;
-
-var definitions = SourceSinkConfiguration.builder()
-    .source("<example.Source: java.lang.String read()>")
-    .sink("<example.Sink: void send(java.lang.String)>")
-    .build();
-TaintAnalysisResult result = analysis.analyzeTaint(definitions);
-for (var finding : result.findings()) {
-    System.out.println(finding.source().invokedMethodSignature());
-    System.out.println(finding.sink().invokedMethodSignature());
-}
-System.out.println(result.status());
-System.out.println(result.diagnostics());
-```
-
-`TaintAnalysisResult` contains an analysis ID, `SUCCESS`, `FAILED`, `TIMED_OUT`,
-or `CANCELLED` status, findings, and diagnostics. Findings contain detached source
-and sink values, paths, and `pathAvailable`. Endpoints distinguish the enclosing
-method signature from the invoked source/sink API and retain the access-path
-description. An unavailable enclosing method or non-invocation endpoint has a
-null signature; a missing reconstructed path does not discard a detected flow.
-Partial findings remain available after incomplete analyses. **Check the status
-before interpreting an empty finding list.**
-Diagnostics contain backend exceptions and termination information. General
-Soot/FlowDroid parser and typing warnings remain in the caller's logs; `SUCCESS`
-does not certify analysis soundness or the absence of such warnings.
-
-These immutable records contain no live Soot objects or exceptions, so clients
-can retain them after reset and serialize them with their chosen JSON library.
-`TaintResultFormatter.format(result)` provides legacy text rendering and rejects
-incomplete results. `FlowdroidUtils.runTaintAnalysisResult(...)` also exposes the
-structured API for existing integrations that manage Soot themselves.
-
-Source/sink configurations can be built explicitly, loaded with
-`SourceSinkConfiguration.fromFile(path)`, or initialized with
-`bundledDefaults()`. File loading uses exactly the supplied file. Combine
-configurations with `builder().include(configuration)` when wanted. A session's
-default configuration is empty; pass definitions to `analyzeTaint(definitions)`
-or configure `builder(...).sourcesAndSinks(definitions)` explicitly.
-
-### Control cancellation, deadlines, and logging
-
-```java
-import com.jordansamhi.androspecter.execution.CancellationSource;
-import com.jordansamhi.androspecter.execution.Deadline;
-import java.time.Duration;
-
-try (var cancellation = new CancellationSource();
-     var deadline = Deadline.after(Duration.ofMinutes(2), cancellation::cancel);
-     var analysis = AndroidAnalysis.builder(apk, platforms)
-         .cancellationToken(cancellation.token())
-         .callbackTimeout(Duration.ofSeconds(30))
-         .taintTimeout(Duration.ofMinutes(1))
-         .pathTimeout(Duration.ofSeconds(20))
-         .open()) {
-    var result = analysis.analyzeTaint(definitions);
-}
-```
-
-The caller can also invoke `cancellation.cancel()` from another thread. Deadlines
-invoke a caller-provided callback on a daemon thread. Cancellation is cooperative:
-live operations check the token, and FlowDroid receives a best-effort data-flow
-abort request. Callback/call-graph phases may not stop immediately. A deadline
-does not forcibly stop Java code; retain the session until the running operation
-returns. FlowDroid phase limits are rounded up to seconds; zero disables a limit.
-Callback timeouts may yield a partial graph. Initialization/inspection cancellation
-throws `CancellationException`; taint execution reports `CANCELLED` with any
-available findings.
-
-AndroSpecter logs through `slf4j-api` and supplies no logging backend or global
-logging configuration, following the [SLF4J library model](https://www.slf4j.org/manual.html#libraries).
-Choose a compatible SLF4J 2.x provider in the calling application, for example:
+The library supplies the SLF4J API, without a logging provider or global logging
+configuration. If your application has no provider yet, it can select one:
 
 ```xml
 <dependency>
@@ -180,148 +70,125 @@ Choose a compatible SLF4J 2.x provider in the calling application, for example:
 </dependency>
 ```
 
-`new CommandLineOptions("my-tool").parse(args)` returns an immutable parse result
-with `helpRequested()` and `helpText()`; invalid arguments throw
-`CommandLineOptions.ValidationException`. Printing help and selecting process
-exit codes belong to the executable, not the library.
+Use one compatible SLF4J 2.x provider. See [Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started)
+for a complete Maven setup and the distinction between local and published versions.
 
-### Compose instrumentation explicitly
+## Your first analysis
+
+This complete class opens an APK, builds its Android entry points and CHA call
+graph, then queries the detached graph after the analysis has closed:
 
 ```java
-import com.jordansamhi.androspecter.instrumentation.InstrumentationOptions;
-import com.jordansamhi.androspecter.instrumentation.Logger;
-import com.jordansamhi.androspecter.instrumentation.TransformationPipeline;
+import com.jordansamhi.androspecter.analysis.AndroidAnalysis;
+import com.jordansamhi.androspecter.graph.CallGraphSnapshot;
+import java.nio.file.Path;
 
-var logger = new Logger(analysis.context(), InstrumentationOptions.builder()
-    .classes(clazz -> clazz.isApplicationClass()
-        && clazz.getName().startsWith("example."))
-    .libraryFilter(LibraryFilter.packages("com.vendor.sdk"))
-    .build());
-logger.logAllMethods("MY_ANALYSIS", false);
+public final class QuickStart {
+    /**
+     * Builds and inspects an APK's call graph.
+     * @param args APK path and Android SDK platforms directory
+     * @throws IllegalArgumentException if two paths are not supplied
+     */
+    public static void main(String[] args) {
+        if (args.length != 2) {
+            throw new IllegalArgumentException("Usage: QuickStart <app.apk> <sdk/platforms>");
+        }
 
-analysis.apply(TransformationPipeline.builder()
-    .add(logger)
-    .add(context -> { /* another caller-defined transformation */ })
-    .build());
+        CallGraphSnapshot graph;
+        try (AndroidAnalysis analysis = AndroidAnalysis.open(
+                Path.of(args[0]), Path.of(args[1]))) {
+            System.out.println("Package: " + analysis.packageName());
+            graph = analysis.callGraph();
+        }
+
+        System.out.println("Call graph edges: " + graph.edges().size());
+        graph.methods().stream().limit(5).forEach(method -> {
+            System.out.println(method);
+            System.out.println("  Callees: " + graph.calleesOf(method));
+        });
+    }
+}
 ```
 
-New logger instances own their options and registered transformations; they do
-not register global Soot packs. Their default scope is application classes, with
-no implicit library classification. Pipeline stages execute in registration
-order and are not transactional. Reapplying a pipeline may insert probes again.
-After `apply`, `callGraph()` rebuilds before capturing a new snapshot; previously
-returned snapshots remain unchanged. Instrumentation changes the in-memory model;
-APK export/signing remains a separate caller-controlled step.
+Use `AndroidAnalysis.builder(apk, platforms)` to select `CHA`, `RTA`, `VTA`, or
+`SPARK`, set source/sink definitions, or configure cancellation and phase limits.
+The [session guide](https://github.com/JordanSamhi/AndroSpecter/wiki/Analysis-sessions)
+explains these choices and shows how to collect instance-owned metrics.
 
-### Migration from 1.1.8
+## Run the included examples
 
-- `CommandLineOptions.parseArgs` and `TimeOut` no longer call `System.exit`.
-  Handle parse errors/help in your executable. The deprecated `TimeOut(int)`
-  signals its cancellation token and logs expiration; callers must observe the
-  token or supply an explicit callback. `TimeOut.cancel()` disarms the timer.
-- `Writer` and metric printing now use SLF4J. Add/configure a provider in your
-  application if you want logs; the bundled global `log4j.xml` has been removed.
-- Legacy singleton accessors remain for compatibility but are deprecated where
-  instance APIs replace them. Use `new ResultsAccumulator()`,
-  `new SourcesSinksManager()`, or an `AndroidAnalysis` session for isolated state.
-- Existing `runTaintAnalysis` text output and logger `v()` workflows remain
-  available. Prefer structured results and context-bound logger instances.
-- Legacy `AndroidAppInspector` callbacks now default to no-ops. Its `run()` still
-  works; `runIn(context)` accepts a caller-owned context. New code can use
-  `Inspection` without subclassing.
-
-## Detailed Documentation
-
-This README documents the new session APIs. The
-[AndroSpecter wiki](https://github.com/JordanSamhi/AndroSpecter/wiki) contains
-additional examples for the older utility APIs.
-
-## Building and testing
-
-Use JDK 17 or later and Maven. FlowDroid 2.15.1 requires Java 17;
-the library is compiled for that same minimum version.
-
-The analysis dependencies are pinned to Soot **4.7.1** and FlowDroid **2.15.1**
-(`soot-infoflow`, `soot-infoflow-android`, and `soot-infoflow-summaries`).
-FlowDroid 2.15.1 itself depends on Soot 4.7.1. Their versions are centralized in
-the `soot.version` and `flowdroid.version` Maven properties.
-
-Upgrading from the previous dependency set (Soot 4.6.0 / FlowDroid 2.14.1)
-requires upgrading Java 11 installations to Java 17 or later.
+After installing the library, build the independent example project from the
+repository root:
 
 ```sh
-mvn test
-mvn clean verify
+mvn -f examples/pom.xml package dependency:copy-dependencies
+
+APK=/absolute/path/to/app.apk
+PLATFORMS=/absolute/path/to/android-sdk/platforms
+APP_PREFIX=com.example.app
+
+java -Xmx4g -cp 'examples/target/classes:examples/target/dependency/*' \
+    com.jordansamhi.androspecter.examples.InspectApk \
+    "$APK" "$PLATFORMS" "$APP_PREFIX"
 ```
 
-The tests use synthetic Soot bodies, generated DEX files, temporary files, and fake service connections.
-They cover detached results, session ownership/reset guards, cancellation,
-source/sink isolation, graph indexes, and composed inspection/instrumentation.
-They do not require Redis, an AndroZoo API key, an Android SDK, or a device.
-Analyzing real APKs still requires the Android platform JARs.
+Replace the paths and package prefix with your own. The prefix controls inspection
+scope; it is not proof that a class is first-party code. On Windows, use `;`
+instead of `:` between classpath entries.
 
-Development validation on 2026-10-23 used Java 17:
+| Example | Demonstrates |
+| --- | --- |
+| `InspectApk` | Invocation callbacks, per-analysis metrics, and indexed graph queries |
+| `AnalyzeTaint` | File-based source/sink definitions, completion status, and JSON export after close |
+| `InstrumentInMemory` | Scoped logging probes, transformation composition, and graph rebuilding |
+| `CancelAnalysis` | A caller-owned cancellation token and cooperative deadline |
 
-- `mvn clean verify`: 163 tests passed, with no failures or skipped tests.
-- A small APK with a known source-to-sink flow returned a successful structured
-  finding with a reconstructed path, serialized to JSON after closing the session.
-- The same APK accepted instance-based logging instrumentation; rebuilding its
-  graph added calls to the generated helper while preserving the original snapshot.
-- Word Snake (`justinasmegames.wordsnake`) retained the earlier counts: 6215
-  application classes, 30 methods and 437 Jimple statements in the manifest
-  package, and 925269 graph edges. Two upstream `Failed Typing` diagnostics and
-  unsupported `FLAG_WEAK` resource warnings remain; completion does not establish
-  that those diagnostics are harmless or that the graph is complete.
+The [example README](examples/README.md) contains every command and expected
+behavior. These programs are executable consumers of the library. AndroSpecter's
+own JAR has no command-line entry point.
 
-## Analysis and instrumentation behavior
+## Lifecycle and result semantics
 
-- Run Soot analyses sequentially within a JVM. Initialization resets Soot's global
-  state; helper queries reflect the current scene and call graph. Class and method
-  totals can include loaded framework classes. Legacy utility library exclusion
-  uses the bundled package-prefix list, independently of Soot's application-class
-  flag. New inspection and instrumentation APIs accept caller-defined filters.
-- Multidex APKs are processed by default in Soot 4.7.1. The removed
-  `process_multiple_dex` and FlowDroid `mergeDexFiles` options are no longer needed.
-- `FlowdroidUtils.runTaintAnalysis` throws `IllegalStateException` when analysis
-  fails, returns no result, or terminates early. Only a successful analysis with no
-  detected flows returns an empty set. Detected flows remain in the report when
-  their detailed paths are unavailable.
-- Instrumentation logs record coverage: each distinct message is emitted at most
-  once per app process, regardless of its tag. Statement probes record that a
-  statement was reached; identity, return, and monitor statements are excluded.
-  Call logs identify the statically referenced target. Component messages now
-  include the callback, for example `ACTIVITY=com.example.Main|void onStart()`.
-- `AndroidAppsProcessor` takes a timeout in **minutes**. It records success only
-  after `processResults()` returns, cancels timed-out tasks, and shuts down their
-  executors. If a task ignores interruption for five seconds, the worker stops
-  polling; it cannot forcibly terminate Java code. The caller owns the Redis
-  connection and can close it with try-with-resources.
-- The legacy `TimeOut` utility takes **seconds**, signals cancellation, and invokes
-  its callback when it expires. It never terminates the JVM. Call `cancel()` to disarm it.
-- Metric vectors order columns alphabetically by metric name. Use the same metric
-  names for comparable rows. Legacy singleton users must call
-  `ResultsAccumulator.v().reset()` before a new app; session metrics are isolated.
-  `CommandLineOptions.reset()` clears CLI configuration and parsed values;
-  `SourcesSinksManager.reset()` restores the bundled source/sink definitions.
-- Source/sink files use UTF-8 records such as
-  `SOURCE|<android.telephony.TelephonyManager: java.lang.String getLine1Number()>`.
-  Types are uppercase `SOURCE` or `SINK`. Loading into a `SourcesSinksManager` is
-  additive; `SourceSinkConfiguration.fromFile` loads only that file. Malformed
-  files are rejected with a location before any of their entries are applied.
+- **One managed session per JVM.** Open, use, and close it on the same thread.
+  Soot has global state; use separate processes for parallel analyses. External
+  Soot users must coordinate access too.
+- **Live objects have a lifetime.** Callback arguments such as `SootMethod` and
+  `Unit` must not be reused after close or `G.reset()`. Graph, taint, and metric
+  snapshots contain detached data and survive those operations.
+- **Graphs describe static possibilities.** They include framework and generated
+  entry points. Snapshot nodes are methods incident to an edge, not every method
+  declared in the APK. Large indexed snapshots require additional memory.
+- **Check taint status.** `SUCCESS`, `FAILED`, `TIMED_OUT`, and `CANCELLED` distinguish
+  completion from partial results. An empty finding list alone is not evidence
+  that no flow exists. Source/sink settings are empty unless explicitly supplied.
+- **Cancellation is cooperative.** Deadlines request cancellation; they do not
+  forcibly terminate Java code. Some backend phases may finish before noticing
+  a request. Callback timeouts can leave a partial graph.
+- **Instrumentation changes the in-memory model.** APK export and signing are
+  separate caller-controlled steps. Pipelines execute in order without rollback.
 
-## Built With
+See [Migration and troubleshooting](https://github.com/JordanSamhi/AndroSpecter/wiki/Migration-and-troubleshooting)
+for legacy singleton APIs, changed timeout/CLI behavior, backend diagnostics,
+and common setup errors.
 
-* [Maven](https://maven.apache.org/) - Dependency Management
+## Build, test, and browse the API
 
-## License
+```sh
+mvn clean verify
+mvn org.apache.maven.plugins:maven-javadoc-plugin:3.4.0:javadoc \
+    -Dshow=public -Ddoclint=all -Dmaven.javadoc.failOnWarnings=true
+```
 
-This project is licensed under the GNU LESSER GENERAL PUBLIC LICENSE 2.1 - see the [LICENSE](LICENSE) file for details
+Open `target/site/apidocs/index.html` for the public API reference. Tests use
+synthetic Soot bodies, generated DEX files, and local fixtures; they do not require
+an Android SDK, Redis service, or AndroZoo key. The examples require an APK and
+Android platform JARs.
 
-## Contact & Contributions
+Every new or changed public API must have usage-oriented Javadoc. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the documentation requirements.
 
-API contributions must include Javadoc for public methods and constructors;
-see the [documentation requirements and validation command](CONTRIBUTING.md).
+## License and contact
 
-If you have any questions, issues, feedback, or want to contribute, please don't hesitate to [contact us](mailto:jordan.samhi@uni.lu).
-
-Your insights and contributions are always welcome! 🌟
+AndroSpecter is licensed under [GNU LGPL 2.1](LICENSE).
+For questions or contributions, open a [GitHub issue](https://github.com/JordanSamhi/AndroSpecter/issues)
+or contact [Jordan Samhi](mailto:jordan.samhi@uni.lu).

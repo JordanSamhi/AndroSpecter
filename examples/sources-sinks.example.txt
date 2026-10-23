@@ -1,0 +1,9 @@
+# UTF-8 format: one SOURCE|<signature> or SINK|<signature> record per line.
+# Blank lines and lines beginning with # are ignored. Inline comments are not supported.
+# These signatures are PLACEHOLDERS, not known APIs in your APK.
+# Replace them with exact Jimple method signatures present in the app or Android APIs.
+# The return type and ordered parameter types must match. No implicit bundled entries are added.
+# A completed run with unmatched placeholders can have zero findings; it does not validate a policy.
+
+SOURCE|<example.Input: java.lang.String read()>
+SINK|<example.Output: void send(java.lang.String)>
