@@ -1,6 +1,7 @@
 /target/
 .DS_Store
 .idea/
+*.iml
 target*
 *.prompt
 *.prompt.*
