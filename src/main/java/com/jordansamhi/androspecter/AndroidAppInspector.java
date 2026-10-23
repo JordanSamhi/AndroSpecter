@@ -4,6 +4,7 @@ import soot.*;
 import soot.util.Chain;
 
 import java.util.Iterator;
+import java.util.ArrayList;
 
 /**
  * Abstract class to inspect Android classes, methods, and statements.
@@ -75,7 +76,10 @@ public abstract class AndroidAppInspector {
         if (examineClasses) {
             examineClass(sc);
         }
-        Iterator<SootMethod> methodIterator = sc.getMethods().iterator();
+        if (!examineMethods && !examineStatements) {
+            return;
+        }
+        Iterator<SootMethod> methodIterator = new ArrayList<>(sc.getMethods()).iterator();
         while (methodIterator.hasNext()) {
             SootMethod sm = methodIterator.next();
             processMethod(sc, sm);
@@ -92,7 +96,7 @@ public abstract class AndroidAppInspector {
         if (examineMethods) {
             examineMethod(sc, sm);
         }
-        if (sm.isConcrete()) {
+        if (examineStatements && sm.isConcrete()) {
             processStatements(sc, sm, sm.retrieveActiveBody());
         }
     }

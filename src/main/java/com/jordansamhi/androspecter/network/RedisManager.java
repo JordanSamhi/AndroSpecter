@@ -4,6 +4,7 @@ import redis.clients.jedis.Jedis;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /*-
@@ -37,7 +38,7 @@ import java.util.Set;
  *
  * @author Jordan Samhi
  */
-public class RedisManager {
+public class RedisManager implements AutoCloseable {
 
     private final Jedis jedis;
 
@@ -53,10 +54,26 @@ public class RedisManager {
             throw new IllegalArgumentException("Server and port must not be null");
         }
         this.jedis = new Jedis(String.format("redis://%s:%s", server, port));
-        if (auth != null && !auth.isEmpty()) {
-            this.jedis.auth(auth);
+        try {
+            if (auth != null && !auth.isEmpty()) {
+                this.jedis.auth(auth);
+            }
+            this.jedis.connect();
+        } catch (RuntimeException e) {
+            this.jedis.close();
+            throw e;
         }
-        this.jedis.connect();
+    }
+
+    /** Creates a manager around an existing connection, which this manager owns. */
+    protected RedisManager(Jedis jedis) {
+        this.jedis = Objects.requireNonNull(jedis, "jedis");
+    }
+
+    /** Releases the Redis connection. The caller owns this manager's lifecycle. */
+    @Override
+    public void close() {
+        this.jedis.close();
     }
 
     /**

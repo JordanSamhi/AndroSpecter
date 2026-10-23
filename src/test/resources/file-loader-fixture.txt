@@ -1,0 +1,6 @@
+# comment
+   # indented comment
+
+   example.package
+  échantillon.paquet
+example.package

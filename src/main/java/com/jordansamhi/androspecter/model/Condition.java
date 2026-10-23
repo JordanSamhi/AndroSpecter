@@ -98,9 +98,17 @@ public class Condition {
      *
      * @param i      The IfStmt object representing the condition.
      * @param method The SootMethod object containing the condition.
+     * @throws IllegalArgumentException if the condition is null, the method has no concrete body,
+     *                                  or the condition is not in that body
      */
     public Condition(IfStmt i, SootMethod method) {
         this();
+        if (i == null) {
+            throw new IllegalArgumentException("Condition statement must not be null");
+        }
+        if (method == null || !method.isConcrete()) {
+            throw new IllegalArgumentException("Condition requires a concrete method");
+        }
         this.condition = i;
         this.method = method;
         generateGraph();
@@ -293,10 +301,15 @@ public class Condition {
      * and creating a BriefUnitGraph object to represent the control flow graph.
      */
     private void generateGraph() {
-        body = (method != null && method.isConcrete()) ? method.retrieveActiveBody() : null;
-        if (body != null) {
-            this.graph = new BriefUnitGraph(body);
+        try {
+            body = method.retrieveActiveBody();
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Cannot retrieve the method body for the condition", e);
         }
+        if (!body.getUnits().contains(condition)) {
+            throw new IllegalArgumentException("Condition statement must belong to the method body");
+        }
+        this.graph = new BriefUnitGraph(body);
     }
 
     /**

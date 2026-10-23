@@ -1,11 +1,20 @@
 package com.jordansamhi.androspecter;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 public class ResultsAccumulatorTest {
+
+    @BeforeEach
+    @AfterEach
+    void resetAccumulator() {
+        ResultsAccumulator.v().reset();
+    }
 
     @Test
     public void testSingletonInstance() {
@@ -50,5 +59,46 @@ public class ResultsAccumulatorTest {
         ra.setMetric("metric2", 20);
         String expected = "TestApp,10,20";
         assertEquals(expected, ra.getVectorResults());
+    }
+
+    @Test
+    void metricColumnsDoNotDependOnInsertionOrder() {
+        ResultsAccumulator ra = ResultsAccumulator.v();
+        ra.setAppName("app");
+        ra.setMetric("zeta", 2);
+        ra.setMetric("alpha", 1);
+        String firstRun = ra.getVectorResults();
+        ra.reset();
+        ra.setAppName("app");
+        ra.setMetric("alpha", 1);
+        ra.setMetric("zeta", 2);
+        assertEquals("app,1,2", firstRun);
+        assertEquals(firstRun, ra.getVectorResults());
+    }
+
+    @Test
+    void resetRemovesPreviousApplicationsResults() {
+        ResultsAccumulator ra = ResultsAccumulator.v();
+        ra.setAppName("old-app");
+        ra.incrementMetric("old-metric");
+        ra.reset();
+        assertEquals("", ra.getAppName());
+        assertEquals(0, ra.getMetric("old-metric"));
+        assertEquals("", ra.getVectorResults());
+    }
+
+    @Test
+    void concurrentIncrementsAreNotLost() {
+        ResultsAccumulator ra = ResultsAccumulator.v();
+        IntStream.range(0, 10000).parallel().forEach(i -> ra.incrementMetric("events"));
+        assertEquals(10000, ra.getMetric("events"));
+    }
+
+    @Test
+    void vectorEscapesApplicationNamesAsCsv() {
+        ResultsAccumulator ra = ResultsAccumulator.v();
+        ra.setAppName("an, \"app\"\nname");
+        ra.setMetric("count", 3);
+        assertEquals("\"an, \"\"app\"\"\nname\",3", ra.getVectorResults());
     }
 }

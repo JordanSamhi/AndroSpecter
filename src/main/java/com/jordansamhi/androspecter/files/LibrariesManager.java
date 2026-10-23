@@ -3,7 +3,6 @@ package com.jordansamhi.androspecter.files;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.SootClass;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -42,14 +41,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LibrariesManager extends FileLoader {
 
     private static LibrariesManager instance;
-    private Set<SootClass> libraries = ConcurrentHashMap.newKeySet();
+    private final Set<String> libraries = ConcurrentHashMap.newKeySet();
 
     private LibrariesManager() {
         super();
-        this.libraries = new HashSet<>();
     }
 
-    public static LibrariesManager v() {
+    public static synchronized LibrariesManager v() {
         if (instance == null) {
             instance = new LibrariesManager();
         }
@@ -68,15 +66,16 @@ public class LibrariesManager extends FileLoader {
      * @return true if the SootClass belongs to a library, false otherwise
      */
     public boolean isLibrary(SootClass sc) {
-        if (libraries.contains(sc)) {
+        String className = sc.getName();
+        if (libraries.contains(className)) {
             return true;
         }
 
         boolean isLibrary = items.parallelStream()
-                .anyMatch(item -> sc.getName().startsWith(item + "."));
+                .anyMatch(item -> className.startsWith(item + "."));
 
         if (isLibrary) {
-            libraries.add(sc);
+            libraries.add(className);
         }
 
         return isLibrary;

@@ -1,7 +1,8 @@
 package com.jordansamhi.androspecter;
 
-import java.util.HashMap;
+import java.util.SortedMap;
 import java.util.StringJoiner;
+import java.util.TreeMap;
 
 /**
  * Singleton class that accumulates results metrics.
@@ -13,7 +14,7 @@ public class ResultsAccumulator {
     /**
      * Singleton instance.
      */
-    private static ResultsAccumulator instance;
+    private static final ResultsAccumulator instance = new ResultsAccumulator();
 
     /**
      * Application name.
@@ -23,14 +24,14 @@ public class ResultsAccumulator {
     /**
      * Map to hold various metrics and their counts.
      */
-    private final HashMap<String, Integer> metrics;
+    private final SortedMap<String, Integer> metrics;
 
     /**
      * Private constructor to enforce singleton usage.
      */
     private ResultsAccumulator() {
         this.appName = "";
-        this.metrics = new HashMap<>();
+        this.metrics = new TreeMap<>();
     }
 
     /**
@@ -39,10 +40,15 @@ public class ResultsAccumulator {
      * @return singleton instance of ResultsAccumulator
      */
     public static ResultsAccumulator v() {
-        if (instance == null) {
-            instance = new ResultsAccumulator();
-        }
         return instance;
+    }
+
+    /**
+     * Clears the application name and metrics before collecting another application's results.
+     */
+    public synchronized void reset() {
+        appName = "";
+        metrics.clear();
     }
 
     /**
@@ -50,7 +56,7 @@ public class ResultsAccumulator {
      *
      * @return application name
      */
-    public String getAppName() {
+    public synchronized String getAppName() {
         return appName;
     }
 
@@ -59,7 +65,7 @@ public class ResultsAccumulator {
      *
      * @param appName the new application name
      */
-    public void setAppName(String appName) {
+    public synchronized void setAppName(String appName) {
         this.appName = appName;
     }
 
@@ -68,7 +74,7 @@ public class ResultsAccumulator {
      *
      * @param metric the metric to increment
      */
-    public void incrementMetric(String metric) {
+    public synchronized void incrementMetric(String metric) {
         metrics.put(metric, metrics.getOrDefault(metric, 0) + 1);
     }
 
@@ -78,7 +84,7 @@ public class ResultsAccumulator {
      * @param metric the metric to get
      * @return the count of the metric, or 0 if the metric does not exist
      */
-    public int getMetric(String metric) {
+    public synchronized int getMetric(String metric) {
         return metrics.getOrDefault(metric, 0);
     }
 
@@ -88,7 +94,7 @@ public class ResultsAccumulator {
      * @param metric the metric to set
      * @param value  the value to set
      */
-    public void setMetric(String metric, int value) {
+    public synchronized void setMetric(String metric, int value) {
         metrics.put(metric, value);
     }
 
@@ -96,18 +102,19 @@ public class ResultsAccumulator {
     /**
      * Method to print all the metrics in a vector form.
      */
-    public void printVectorResults() {
+    public synchronized void printVectorResults() {
         System.out.println(getVectorResults());
     }
 
     /**
-     * Method to get a string representation of the metrics in a vector form.
+     * Returns the application name followed by metric values sorted by metric name.
+     * The same metric names therefore produce the same column order across runs.
      *
      * @return a string of metrics in a vector form
      */
-    public String getVectorResults() {
+    public synchronized String getVectorResults() {
         StringJoiner sj = new StringJoiner(",");
-        sj.add(this.getAppName());
+        sj.add(csvField(this.getAppName()));
 
         for (String metric : metrics.keySet()) {
             sj.add(String.valueOf(metrics.get(metric)));
@@ -116,10 +123,17 @@ public class ResultsAccumulator {
         return sj.toString();
     }
 
+    private String csvField(String value) {
+        if (value != null && (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r"))) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
     /**
-     * Method to print all the metrics in a readable format.
+     * Prints all metrics in ascending metric-name order.
      */
-    public void printResults() {
+    public synchronized void printResults() {
         System.out.println("Results:");
         System.out.printf(" - App name: %s%n", this.getAppName());
 

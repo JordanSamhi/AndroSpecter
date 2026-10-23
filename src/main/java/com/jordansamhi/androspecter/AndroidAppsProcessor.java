@@ -3,8 +3,13 @@ package com.jordansamhi.androspecter;
 import com.jordansamhi.androspecter.network.RedisManager;
 import com.jordansamhi.androspecter.printers.Writer;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Objects;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * This abstract class defines the structure and flow of an Android application processing framework.
@@ -27,32 +32,23 @@ public abstract class AndroidAppsProcessor {
     /**
      * The root key used in Redis to store and retrieve information related to the processing of Android apps.
      */
-    private String redisRoot;
+    private final String redisRoot;
 
     /**
-     * The key used in Redis for popping an element from the set.
+     * The maximum time that processApp may run, and the grace period for cancellation.
      */
-    private String redisSpop;
-
-    /**
-     * The key used in Redis for checking the success of processing an Android app.
-     */
-    private String redisSuccess;
-
-    /**
-     * The maximum number of minutes that the processApp method is allowed to run for each Android app.
-     */
-    private int timeout;
+    private final long timeoutMillis;
+    private final long terminationWaitMillis;
 
     /**
      * The RedisManager used to interact with the Redis database.
      */
-    private RedisManager rm;
+    private final RedisManager rm;
 
     /**
      * The AndroZooUtils instance used to download the APK files.
      */
-    private AndroZooUtils au;
+    private final AndroZooUtils au;
 
 
     /**
@@ -70,10 +66,19 @@ public abstract class AndroidAppsProcessor {
      */
 
     public AndroidAppsProcessor(RedisManager rm, AndroZooUtils au, String redisRoot, int timeout) {
-        this.rm = rm;
-        this.redisRoot = redisRoot;
-        this.timeout = timeout;
-        this.au = au;
+        this(rm, au, redisRoot, TimeUnit.MINUTES.toMillis(timeout), 5000);
+    }
+
+    AndroidAppsProcessor(RedisManager rm, AndroZooUtils au, String redisRoot,
+                         long timeoutMillis, long terminationWaitMillis) {
+        if (timeoutMillis <= 0 || terminationWaitMillis <= 0) {
+            throw new IllegalArgumentException("Timeout and cancellation grace period must be positive");
+        }
+        this.rm = Objects.requireNonNull(rm, "rm");
+        this.redisRoot = Objects.requireNonNull(redisRoot, "redisRoot");
+        this.timeoutMillis = timeoutMillis;
+        this.terminationWaitMillis = terminationWaitMillis;
+        this.au = Objects.requireNonNull(au, "au");
     }
 
     /**
@@ -111,7 +116,9 @@ public abstract class AndroidAppsProcessor {
      * <p>
      * The processing of each app is performed in its own thread, with a timeout. If the processing
      * takes longer than the timeout, it is cancelled. If any other exception occurs during the processing,
-     * it is logged and the process continues with the next app.
+     * it is logged and the process continues with the next app. If cancellation does not stop
+     * an analysis within five seconds, this worker stops polling to avoid overlapping analyses.
+     * The caller retains ownership of the Redis manager and should close it when finished.
      */
     public void run() {
         String redisSpop = String.format("%s:pop", this.redisRoot);
@@ -119,7 +126,7 @@ public abstract class AndroidAppsProcessor {
         String redisErrors = String.format("%s:errors", this.redisRoot);
 
         try {
-            while (true) {
+            while (!Thread.currentThread().isInterrupted()) {
                 String sha = rm.spop(redisSpop);
                 if (sha == null) {
                     Writer.v().pwarning("No SHA received, sleeping for 30 sec...");
@@ -133,40 +140,120 @@ public abstract class AndroidAppsProcessor {
                     continue;
                 }
 
-                String apkPath = this.au.getApk(sha);
-
-                ExecutorService executor = Executors.newSingleThreadExecutor();
-                Future<String> future = executor.submit(new Callable<String>() {
-                    @Override
-                    public String call() throws Exception {
-                        processApp(apkPath);
-                        return "Task completed successfully";
-                    }
-                });
-                try {
-                    String result = future.get(timeout, TimeUnit.MINUTES);
-                    if (result.equals("Task completed successfully")) {
-                        rm.sadd(redisSuccess, sha);
-                        this.processResults();
-                    } else {
-                        rm.sadd(redisErrors, sha);
-                        Writer.v().perror("Error in processing app");
-                    }
-                } catch (TimeoutException e) {
-                    rm.sadd(redisErrors, sha);
-                    Writer.v().perror("Timeout reached");
-                } catch (ExecutionException e) {
-                    rm.sadd(redisErrors, sha);
-                    Writer.v().perror(String.format("An exception occurred within the task: %s", e.getMessage()));
-                }
-                if (new File(apkPath).delete()) {
-                    Writer.v().psuccess("App deleted successfully");
-                } else {
-                    Writer.v().perror("Failed to delete file");
+                if (!processOneApp(sha, redisSuccess, redisErrors)) {
+                    return;
                 }
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Writer.v().pwarning("App processing interrupted; stopping worker");
         } catch (Exception e) {
             Writer.v().perror(String.format("An exception occurred: %s", e.getMessage()));
+        }
+    }
+
+    private boolean processOneApp(String sha, String redisSuccess, String redisErrors)
+            throws InterruptedException {
+        String apkPath = null;
+        ExecutorService executor = null;
+        Future<?> future = null;
+        AtomicBoolean cancelled = new AtomicBoolean();
+        boolean terminated = true;
+        try {
+            apkPath = this.au.getApk(sha);
+            if (apkPath == null || !Files.isRegularFile(Paths.get(apkPath))
+                    || !Files.isReadable(Paths.get(apkPath)) || Files.size(Paths.get(apkPath)) == 0) {
+                throw new IOException("No readable APK was downloaded for " + sha);
+            }
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException();
+            }
+            final String downloadedApk = apkPath;
+            executor = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "androspecter-analysis");
+                thread.setDaemon(true);
+                return thread;
+            });
+            future = executor.submit(() -> {
+                try {
+                    processApp(downloadedApk);
+                } finally {
+                    // An uncooperative task may finish after the worker has stopped polling.
+                    if (cancelled.get()) {
+                        deleteApk(downloadedApk);
+                    }
+                }
+            });
+            future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException();
+            }
+            processResults();
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException();
+            }
+            rm.sadd(redisSuccess, sha);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cancelled.set(true);
+            if (future != null) {
+                future.cancel(true);
+            }
+            rm.sadd(redisErrors, sha);
+            throw e;
+        } catch (Exception e) {
+            cancelled.set(true);
+            if (future != null) {
+                future.cancel(true);
+            }
+            rm.sadd(redisErrors, sha);
+            Writer.v().perror(e instanceof TimeoutException
+                    ? "Timeout reached for " + sha
+                    : "Error processing " + sha + ": " + e.getMessage());
+        } finally {
+            if (executor != null) {
+                cancelled.set(true);
+                if (future != null && !future.isDone()) {
+                    future.cancel(true);
+                }
+                executor.shutdownNow();
+                terminated = awaitTermination(executor);
+            }
+            if (terminated) {
+                deleteApk(apkPath);
+            } else {
+                Writer.v().perror("Analysis did not stop after cancellation; stopping worker to avoid "
+                        + "overlapping analyses. APK cleanup will finish when the analysis exits.");
+            }
+        }
+        return terminated;
+    }
+
+    private boolean awaitTermination(ExecutorService executor) {
+        boolean interrupted = Thread.interrupted();
+        try {
+            return executor.awaitTermination(terminationWaitMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            interrupted = true;
+            return false;
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void deleteApk(String apkPath) {
+        if (apkPath == null) {
+            return;
+        }
+        try {
+            Path apk = Paths.get(apkPath);
+            if (Files.isRegularFile(apk) && Files.deleteIfExists(apk)) {
+                Writer.v().psuccess("App deleted successfully");
+            }
+        } catch (IOException e) {
+            Writer.v().perror("Failed to delete APK: " + apkPath);
         }
     }
 }

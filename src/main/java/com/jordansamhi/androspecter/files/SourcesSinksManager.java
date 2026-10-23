@@ -1,15 +1,20 @@
 package com.jordansamhi.androspecter.files;
 
-import com.jordansamhi.androspecter.MethodSignatureConverter;
 import com.jordansamhi.androspecter.utils.Constants;
 import soot.jimple.infoflow.android.data.AndroidMethod;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /*-
  * #%L
@@ -45,7 +50,7 @@ import java.util.Set;
  * The sources and sinks are loaded from a file specified by the abstract getFile() method, which must be
  * implemented by any concrete subclass. The file is assumed to contain a collection of strings, each representing
  * a method and its type (source or sink). The method and type are separated by a "|". The type is expected to be
- * either "source" or "sink", and the method is expected to be a Jimple signature of the method.
+ * either "SOURCE" or "SINK", and the method is expected to be a Jimple signature of the method.
  * <p>
  * This class is a singleton, meaning there can only be one instance of it during the execution of the application.
  * The instance can be accessed by calling the v() method.
@@ -53,6 +58,9 @@ import java.util.Set;
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public class SourcesSinksManager extends FileLoader {
+
+    private static final Pattern SIGNATURE = Pattern.compile(
+            "^<([^\\s:<>]+):\\s+([^\\s<>(),|]+)\\s+([^\\s()|]+)\\(([^()]*)\\)>$");
 
     /**
      * Singleton instance of the SourcesSinksManager.
@@ -84,7 +92,7 @@ public class SourcesSinksManager extends FileLoader {
     }
 
 
-    public static SourcesSinksManager v() {
+    public static synchronized SourcesSinksManager v() {
         if (instance == null) {
             instance = new SourcesSinksManager();
         }
@@ -94,24 +102,51 @@ public class SourcesSinksManager extends FileLoader {
     /**
      * Processes a string representing a method signature and adds it to the appropriate set.
      *
-     * @param methodString The string to process. Should be in the format "type|signature".
+     * @param methodString The string to process. Should be in the format "TYPE|signature".
+     * @param location The resource name or file and line number for error reporting.
+     * @param parsedSources The destination for valid sources.
+     * @param parsedSinks The destination for valid sinks.
      */
-    private void processMethodString(String methodString) {
-        String[] split = methodString.split("\\|");
-        if (split.length == 2) {
-            String type = split[0];
-            String signature = split[1];
-            MethodSignatureConverter msc = MethodSignatureConverter.v();
-            AndroidMethod am = new AndroidMethod(msc.getMethodNameFromJimpleSignature(signature),
-                    msc.getParametersNamesFromJimpleSignature(signature),
-                    msc.getReturnNameFromJimpleSignature(signature),
-                    msc.getClassNameFromJimpleSignature(signature));
-            if (type.equals(Constants.SOURCE)) {
-                this.sources.add(am);
-            } else if (type.equals(Constants.SINK)) {
-                this.sinks.add(am);
+    private void processMethodString(String methodString, String location,
+                                     Set<AndroidMethod> parsedSources, Set<AndroidMethod> parsedSinks) {
+        String record = methodString.trim();
+        if (record.isEmpty() || record.startsWith("#")) {
+            return;
+        }
+        String[] split = record.split("\\|", -1);
+        if (split.length != 2) {
+            throw invalidRecord(location, record, "expected TYPE|<class: returnType method(parameters)>");
+        }
+        String type = split[0].trim();
+        if (!Constants.SOURCE.equals(type) && !Constants.SINK.equals(type)) {
+            throw invalidRecord(location, record, "type must be SOURCE or SINK");
+        }
+        Matcher signature = SIGNATURE.matcher(split[1].trim());
+        if (!signature.matches()) {
+            throw invalidRecord(location, record, "expected a Jimple method signature <class: returnType method(parameters)>");
+        }
+        List<String> parameters = new ArrayList<>();
+        String parameterList = signature.group(4).trim();
+        if (!parameterList.isEmpty()) {
+            for (String parameter : parameterList.split(",", -1)) {
+                String parameterType = parameter.trim();
+                if (!parameterType.matches("[^\\s<>(),|]+")) {
+                    throw invalidRecord(location, record, "parameter types must be nonempty and comma-separated");
+                }
+                parameters.add(parameterType);
             }
         }
+        AndroidMethod method = new AndroidMethod(signature.group(3), parameters,
+                signature.group(2), signature.group(1));
+        if (Constants.SOURCE.equals(type)) {
+            parsedSources.add(method);
+        } else {
+            parsedSinks.add(method);
+        }
+    }
+
+    private IllegalArgumentException invalidRecord(String location, String record, String reason) {
+        return new IllegalArgumentException("Invalid source/sink record at " + location + ": " + reason + ". Record: " + record);
     }
 
     /**
@@ -123,7 +158,7 @@ public class SourcesSinksManager extends FileLoader {
      */
     private void loadSourcesSinks() {
         for (String method : this.items) {
-            processMethodString(method);
+            processMethodString(method, getFile(), sources, sinks);
         }
     }
 
@@ -131,23 +166,42 @@ public class SourcesSinksManager extends FileLoader {
      * Loads source and sink methods from a given file.
      * <p>
      * This method parses lines from the file, where each line is assumed to be a string in the format "type|signature".
-     * The "type" is expected to be either "source" or "sink", and "signature" is the Jimple signature of the method.
+     * The "type" is expected to be either "SOURCE" or "SINK", and "signature" is the Jimple signature of the method.
      * An AndroidMethod object is created from each valid signature and is added to either the sources or sinks collection,
      * depending on the type.
      *
+     * Entries are added only after the complete UTF-8 file has been validated.
+     * Blank lines and lines beginning with # are ignored.
+     *
      * @param file The file containing the source and sink methods' signatures.
+     * @throws IllegalArgumentException if a record is malformed, including its file and line number
+     * @throws UncheckedIOException if the file cannot be read
      */
     public void loadSourcesSinksFromFile(File file) {
-        try {
-            BufferedReader reader = new BufferedReader(new FileReader(file));
+        Set<AndroidMethod> parsedSources = new HashSet<>();
+        Set<AndroidMethod> parsedSinks = new HashSet<>();
+        try (BufferedReader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
             String method;
+            int lineNumber = 0;
             while ((method = reader.readLine()) != null) {
-                processMethodString(method);
+                lineNumber++;
+                processMethodString(method, file + ":" + lineNumber, parsedSources, parsedSinks);
             }
-            reader.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException("Cannot read source/sink file: " + file, e);
         }
+        // Preserve additive loading, but do not partially apply malformed files.
+        sources.addAll(parsedSources);
+        sinks.addAll(parsedSinks);
+    }
+
+    /**
+     * Removes custom entries and restores the bundled source/sink definitions.
+     */
+    public void reset() {
+        sources.clear();
+        sinks.clear();
+        loadSourcesSinks();
     }
 
 

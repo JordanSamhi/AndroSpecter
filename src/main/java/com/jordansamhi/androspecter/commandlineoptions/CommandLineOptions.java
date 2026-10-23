@@ -43,7 +43,7 @@ public class CommandLineOptions {
     /**
      * The Apache Commons CLI Options object for regular options.
      */
-    private final Options options;
+    private Options options;
 
     /**
      * The Apache Commons CLI Options object for first options (like help).
@@ -97,7 +97,7 @@ public class CommandLineOptions {
      *
      * @return The singleton instance of CommandLineOptions.
      */
-    public static CommandLineOptions v() {
+    public static synchronized CommandLineOptions v() {
         if (instance == null) {
             instance = new CommandLineOptions();
         }
@@ -110,6 +110,10 @@ public class CommandLineOptions {
      * @param args The command line arguments.
      */
     public void parseArgs(String[] args) {
+        cmdLine = null;
+        for (CommandLineOption option : optionList) {
+            option.setValue(null);
+        }
         if (this.appName == null) {
             Writer.v().perror("First sets the name of your program, use the setAppName method.");
             System.exit(1);
@@ -174,7 +178,20 @@ public class CommandLineOptions {
      * @return Whether the option is set or not.
      */
     public boolean hasOption(String shortOpt) {
-        return cmdLine.hasOption(shortOpt);
+        return cmdLine != null && cmdLine.hasOption(shortOpt);
+    }
+
+    /**
+     * Clears registered options and parsed values so this singleton can be configured for another run.
+     */
+    public void reset() {
+        for (CommandLineOption option : optionList) {
+            option.setValue(null);
+        }
+        options = new Options();
+        optionList.clear();
+        cmdLine = null;
+        appName = null;
     }
 
     /**

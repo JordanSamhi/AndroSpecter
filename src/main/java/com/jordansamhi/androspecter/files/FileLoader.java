@@ -4,6 +4,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -55,26 +57,25 @@ public abstract class FileLoader {
     protected abstract String getFile();
 
     /**
-     * Loads a file into memory and extracts relevant items into a list.
+     * Loads UTF-8 classpath resource entries, ignoring blank lines and comments.
      *
      * @param file the path to the file to load into memory
      */
     protected void loadFile(String file) {
-        InputStream fis;
-        BufferedReader br;
-        String line;
-        try {
-            fis = this.getClass().getResourceAsStream(file);
-            br = new BufferedReader(new InputStreamReader(fis));
+        InputStream stream = this.getClass().getResourceAsStream(file);
+        if (stream == null) {
+            throw new IllegalStateException("Classpath resource not found: " + file);
+        }
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
             while ((line = br.readLine()) != null) {
+                line = line.trim();
                 if (!line.startsWith("#") && !line.isEmpty()) {
                     this.items.add(line);
                 }
             }
-            br.close();
-            fis.close();
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            throw new UncheckedIOException("Cannot read classpath resource: " + file, e);
         }
     }
 }

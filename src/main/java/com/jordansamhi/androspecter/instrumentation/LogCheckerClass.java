@@ -13,6 +13,8 @@ import java.util.List;
  * It uses the Soot framework to manipulate and analyze Java bytecode.
  * It provides functionality to initialize a logging class, add logs, check if a log has already been made,
  * and log messages conditionally based on whether they have been logged before.
+ * The generated logger records each message at most once per process, regardless of tag.
+ * Its public static methods synchronize on the shared set, making the check, log, and add sequence atomic.
  */
 public class LogCheckerClass {
 
@@ -25,7 +27,7 @@ public class LogCheckerClass {
      *
      * @return The singleton instance of LogCheckerClass.
      */
-    public static LogCheckerClass v() {
+    public static synchronized LogCheckerClass v() {
         if (instance == null) {
             instance = new LogCheckerClass();
         }
@@ -35,8 +37,21 @@ public class LogCheckerClass {
     /**
      * Generates a new SootClass for logging purposes and sets up its structure.
      * This includes defining the class, its fields, and methods for log management.
+     * Reuses this generator's class in the current scene, and generates a fresh class after {@code G.reset()}.
+     * An unrelated application class with the helper's name is rejected rather than overwritten.
      */
-    public void generateClass() {
+    public synchronized void generateClass() {
+        SootClass existing = Scene.v().getSootClassUnsafe(Constants.LOG_CHECKER_CLASS, false);
+        if (existing != null) {
+            if (existing == this.clazz && existing.declaresMethod(Constants.SUB_SIG_LOG)) {
+                return;
+            }
+            if (existing != this.clazz && !existing.isPhantom()) {
+                throw new IllegalStateException("Cannot generate logging helper: class "
+                        + Constants.LOG_CHECKER_CLASS + " already exists in the current Soot scene");
+            }
+            Scene.v().removeClass(existing);
+        }
         this.clazz = new SootClass(Constants.LOG_CHECKER_CLASS, Modifier.PUBLIC);
         this.clazz.setSuperclass(Scene.v().getSootClass(Constants.JAVA_LANG_OBJECT));
         SootField sf = new SootField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET), Modifier.PRIVATE | Modifier.STATIC | Modifier.FINAL);
@@ -68,8 +83,8 @@ public class LogCheckerClass {
                 Jimple.v().newSpecialInvokeExpr(thisLocal,
                         su.getMethodRef(Constants.JAVA_LANG_OBJECT, Constants.SUB_SIG_INIT))));
         units.add(Jimple.v().newReturnVoidStmt());
-        body.validate();
         this.clazz.addMethod(sm);
+        body.validate();
     }
 
     /**
@@ -92,8 +107,8 @@ public class LogCheckerClass {
                         su.getMethodRef(Constants.JAVA_UTIL_HASHSET, Constants.SUB_SIG_INIT))));
         units.add(Jimple.v().newAssignStmt(Jimple.v().newStaticFieldRef(this.clazz.getField(Constants.LOGS, RefType.v(Constants.JAVA_UTIL_SET)).makeRef()), set));
         units.add(Jimple.v().newReturnVoidStmt());
-        body.validate();
         this.clazz.addMethod(sm);
+        body.validate();
     }
 
     /**
@@ -123,8 +138,9 @@ public class LogCheckerClass {
                 Jimple.v().newInterfaceInvokeExpr(logs,
                         su.getMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_ADD), log)));
         units.add(Jimple.v().newReturnVoidStmt());
-        body.validate();
+        synchronizeBody(body);
         this.clazz.addMethod(sm);
+        body.validate();
     }
 
     /**
@@ -157,8 +173,9 @@ public class LogCheckerClass {
                 Jimple.v().newInterfaceInvokeExpr(logs,
                         su.getMethodRef(Constants.JAVA_UTIL_SET, Constants.SUB_SIG_JAVA_UTIL_SET_CONTAINS), log)));
         units.add(Jimple.v().newReturnStmt(bool));
-        body.validate();
+        synchronizeBody(body);
         this.clazz.addMethod(sm);
+        body.validate();
     }
 
     /**
@@ -183,7 +200,7 @@ public class LogCheckerClass {
         Local log = lg.generateLocal(RefType.v(Constants.JAVA_LANG_STRING));
         log.setName("log");
         Local tag = lg.generateLocal(RefType.v(Constants.JAVA_LANG_STRING));
-        log.setName("tag");
+        tag.setName("tag");
         Local bool = lg.generateLocal(BooleanType.v());
         bool.setName("bool");
         units.add(Jimple.v().newIdentityStmt(log, Jimple.v().newParameterRef(RefType.v(Constants.JAVA_LANG_STRING), 0)));
@@ -208,7 +225,36 @@ public class LogCheckerClass {
         units.add(ret);
         is.setTarget(ret);
 
-        body.validate();
+        synchronizeBody(body);
         this.clazz.addMethod(sm);
+        body.validate();
+    }
+
+    /**
+     * Emits explicit monitor operations so synchronization is preserved in both JVM and DEX output.
+     * The exception handler releases the lock before rethrowing a failure from the set or log sink.
+     */
+    private void synchronizeBody(JimpleBody body) {
+        UnitPatchingChain units = body.getUnits();
+        Unit first = body.getFirstNonIdentityStmt();
+        LocalGenerator locals = Scene.v().createLocalGenerator(body);
+        Local lock = locals.generateLocal(RefType.v(Constants.JAVA_UTIL_SET));
+        Local failure = locals.generateLocal(RefType.v("java.lang.Throwable"));
+        Unit loadLock = Jimple.v().newAssignStmt(lock,
+                Jimple.v().newStaticFieldRef(this.clazz.getField(Constants.LOGS,
+                        RefType.v(Constants.JAVA_UTIL_SET)).makeRef()));
+        units.insertBeforeNoRedirect(loadLock, first);
+        units.insertBeforeNoRedirect(Jimple.v().newEnterMonitorStmt(lock), first);
+        for (java.util.Iterator<Unit> iterator = units.snapshotIterator(); iterator.hasNext();) {
+            Unit unit = iterator.next();
+            if (unit instanceof ReturnStmt || unit instanceof ReturnVoidStmt) {
+                units.insertBefore(Jimple.v().newExitMonitorStmt(lock), unit);
+            }
+        }
+        Unit handler = Jimple.v().newIdentityStmt(failure, Jimple.v().newCaughtExceptionRef());
+        units.add(handler);
+        units.add(Jimple.v().newExitMonitorStmt(lock));
+        units.add(Jimple.v().newThrowStmt(failure));
+        body.getTraps().add(Jimple.v().newTrap(Scene.v().getSootClass("java.lang.Throwable"), first, handler, handler));
     }
 }

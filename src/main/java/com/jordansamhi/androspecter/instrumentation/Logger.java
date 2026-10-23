@@ -44,6 +44,7 @@ import java.util.function.Consumer;
 public class Logger {
 
     private final SootUtils su;
+    private final Scene scene;
 
     private static Logger instance;
 
@@ -55,20 +56,20 @@ public class Logger {
      */
     private Logger() {
         su = new SootUtils();
+        scene = Scene.v();
     }
 
     /**
-     * Returns the singleton instance of the class. If it doesn't exist, it creates one.
+     * Returns the instance for the current Soot scene. Reacquire it after {@code G.reset()} to discard
+     * configuration from the previous application.
      *
      * @return the singleton instance of Instrumenter.
      */
-    public static Logger v() {
-        if (instance == null) {
+    public static synchronized Logger v() {
+        if (instance == null || instance.scene != Scene.v()) {
             instance = new Logger();
         }
-        if (Scene.v().getSootClass(Constants.LOG_CHECKER_CLASS).getMethods().isEmpty()) {
-            LogCheckerClass.v().generateClass();
-        }
+        LogCheckerClass.v().generateClass();
         return instance;
     }
 
@@ -88,7 +89,9 @@ public class Logger {
      * @return true if the class is within the target package, false otherwise.
      */
     private boolean isTargetPackage(SootMethod sm) {
-        return sm.getDeclaringClass().getPackageName().startsWith(targetPackage);
+        String packageName = sm.getDeclaringClass().getPackageName();
+        return targetPackage.isEmpty() || packageName.equals(targetPackage)
+                || packageName.startsWith(targetPackage + ".");
     }
 
     /**
@@ -325,6 +328,8 @@ public class Logger {
     /**
      * Internal method to log specific Android components based on given parameters.
      * Logs are added to methods that match the specified component type and are part of the provided set of methods.
+     * Messages have the form {@code TYPE=class|callback-subsignature} and are deduplicated per process:
+     * they report coverage of each callback, not the number or order of lifecycle events.
      *
      * @param tagToLog         Tag to be used in the log statement.
      * @param phaseName        Phase during which this method is invoked.
@@ -343,7 +348,9 @@ public class Logger {
             SootClass sc = sm.getDeclaringClass();
             String actualComponentType = su.getComponentType(sc);
             if (actualComponentType.equals(componentType) && methods.contains(sm.getSubSignature())) {
-                addLogToMethod(sm, tagToLog, String.format("%s=%s", componentType.toUpperCase(), sc.getName()));
+                // Include the callback so deduplication preserves coverage of each lifecycle method.
+                addLogToMethod(sm, tagToLog, String.format("%s=%s|%s", componentType.toUpperCase(Locale.ROOT),
+                        sc.getName(), sm.getSubSignature()));
             }
         });
     }
@@ -425,10 +432,12 @@ public class Logger {
     }
 
     /**
-     * Logs all executable statements in a given code body, except for identity, return, and monitor statements.
+     * Logs entry to executable statements in a given code body, except for identity, return, and monitor statements.
      * Iterates through each unit in the code body, generating log statements for each executable unit.
      * Log statements include a unique identifier for the statement, the method containing it, and a sequence number.
-     * Useful for tracking execution flow and identifying occurrences of specific statements.
+     * Probes precede the original statements, including jumps and throws, and incoming branches are redirected
+     * to the probes. A log records that a statement was reached, not that it completed successfully.
+     * Messages are deduplicated by the generated logger, so these logs describe coverage rather than event counts.
      * Can be configured to include or exclude library methods.
      *
      * @param tagToLog         The tag to be used in the log statement. This tag is used to categorize the log entries.
@@ -445,7 +454,7 @@ public class Logger {
                 return;
             }
             Chain<Unit> units = b.getUnits();
-            Map<Unit, String> insertionPointsToMessage = new HashMap<>();
+            Map<Unit, String> insertionPointsToMessage = new LinkedHashMap<>();
             int cnt = 0;
             for (Unit u : units) {
                 cnt++;
@@ -463,7 +472,7 @@ public class Logger {
                 insertionPointsToMessage.put(u, messageToLog);
             }
             for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
-                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, true);
+                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
             }
         });
     }

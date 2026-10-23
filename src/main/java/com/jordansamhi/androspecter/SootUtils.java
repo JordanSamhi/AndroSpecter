@@ -43,24 +43,7 @@ import java.util.*;
  */
 public class SootUtils {
 
-    private final Set<SootClass> nonLibraryClasses;
-    private final Set<SootClass> classes;
-    private final Set<SootMethod> srcInCG;
-    private final Set<SootMethod> tgtInCG;
-    private final Set<SootMethod> allMethods;
-    private final Set<SootMethod> allMethodsExceptLibraries;
-    private final Set<SootMethod> allMethodsInCallGraph;
-    private final Set<SootMethod> allMethodsInCallGraphExceptLibraries;
-
     public SootUtils() {
-        this.nonLibraryClasses = new HashSet<>();
-        this.classes = new HashSet<>();
-        this.srcInCG = new HashSet<>();
-        this.tgtInCG = new HashSet<>();
-        this.allMethods = new HashSet<>();
-        this.allMethodsExceptLibraries = new HashSet<>();
-        this.allMethodsInCallGraph = new HashSet<>();
-        this.allMethodsInCallGraphExceptLibraries = new HashSet<>();
     }
 
     /**
@@ -147,9 +130,10 @@ public class SootUtils {
     }
 
     /**
-     * Returns the total number of statements in all application classes and methods.
+     * Returns the total number of statements in the current Scene, excluding the dummy main class.
+     * This includes loaded library and framework classes, not only application classes.
      *
-     * @return the total number of statements in all application classes and methods
+     * @return the total number of statements in the current Scene, excluding the dummy main class
      */
     public int getNumberOfStmtInApp() {
         int total = 0;
@@ -160,9 +144,10 @@ public class SootUtils {
     }
 
     /**
-     * Returns the total number of statements in all application classes and methods except libraries
+     * Returns the total number of statements in the current Scene after excluding known library packages
+     * and the dummy main class. Library membership uses LibrariesManager, not Soot application flags.
      *
-     * @return the total number of statements in all application classes and methods except libraries
+     * @return statements outside the dummy main class and known library packages
      */
     public int getNumberOfStmtInAppWithoutLibraries() {
         int total = 0;
@@ -225,16 +210,13 @@ public class SootUtils {
 
     /**
      * This method counts the number of unique nodes in the provided call graph. A node is considered unique
-     * based on its method signature. Both source and target nodes of all edges in the call graph are considered.
+     * based on its method signature. Both source and target nodes are considered, excluding dummy main methods.
      *
      * @param cg CallGraph object for which the unique node count is to be calculated.
      * @return The number of unique nodes in the provided call graph.
      */
     public int getCountOfNodes(CallGraph cg) {
-        if (this.allMethodsInCallGraph.isEmpty()) {
-            this.populateCallGraphSets(cg);
-        }
-        return this.allMethodsInCallGraph.size();
+        return getMethodsInCallGraph(cg).size();
     }
 
 
@@ -269,78 +251,33 @@ public class SootUtils {
      * @return true if the SootMethod is in the CallGraph, false otherwise
      */
     public boolean isInCallGraph(SootMethod method, CallGraph cg) {
-        if (this.srcInCG.isEmpty() || this.tgtInCG.isEmpty()) {
-            this.populateCallGraphSets(cg);
-        }
-        return this.srcInCG.contains(method) || this.tgtInCG.contains(method);
+        return getMethodsInCallGraph(cg).contains(method);
     }
-
-    /**
-     * Populates the sets containing the methods present in the call graph. The sets include source methods, target methods,
-     * and all methods. It also populates a set containing all methods excluding those from library classes.
-     * This method should be used for pre-calculation to optimize repeated calls for these method sets in the call graph.
-     *
-     * @param cg the call graph used to populate the method sets
-     */
-    private void populateCallGraphSets(CallGraph cg) {
-        Set<SootClass> nonLibraryClasses = this.getNonLibraryClasses();
-
-        for (Edge edge : cg) {
-            if (edge != null) {
-                SootMethod src = edge.src();
-                SootMethod tgt = edge.tgt();
-
-                if (src != null) {
-                    SootClass srcClass = src.getDeclaringClass();
-                    if (!isDummyMainClass(srcClass)) {
-                        this.srcInCG.add(src);
-                    }
-                    if (nonLibraryClasses.contains(srcClass)) {
-                        this.allMethodsInCallGraphExceptLibraries.add(src);
-                    }
-                }
-
-                if (tgt != null) {
-                    SootClass tgtClass = tgt.getDeclaringClass();
-                    if (!isDummyMainClass(tgtClass)) {
-                        this.tgtInCG.add(tgt);
-                    }
-                    if (nonLibraryClasses.contains(tgtClass)) {
-                        this.allMethodsInCallGraphExceptLibraries.add(tgt);
-                    }
-                }
-            }
-        }
-
-        this.allMethodsInCallGraph.addAll(this.srcInCG);
-        this.allMethodsInCallGraph.addAll(this.tgtInCG);
-    }
-
 
     /**
      * Checks whether the given SootMethod is called in the given CallGraph.
      * <p>
-     * This method uses a set to cache the target methods in the CallGraph. If the cache is empty,
-     * it iterates through the edges in the CallGraph, and adds the target method of each edge to the cache.
-     * <p>
-     * Finally, it checks if the given method is in the cache, and returns the result.
+     * Examines the current graph on every call and excludes dummy main methods.
      *
      * @param method The SootMethod to check for in the CallGraph
      * @param cg     The CallGraph to search for calls to the SootMethod
      * @return True if the SootMethod is called in the CallGraph, false otherwise
      */
     public boolean isCalledInCallGraph(SootMethod method, CallGraph cg) {
-        if (this.tgtInCG.isEmpty()) {
-            this.populateCallGraphSets(cg);
+        for (Edge edge : cg) {
+            SootMethod target = edge.tgt();
+            if (target != null && !isDummyMainClass(target.getDeclaringClass()) && target.equals(method)) {
+                return true;
+            }
         }
-        return this.tgtInCG.contains(method);
+        return false;
     }
 
     /**
-     * Returns a set of all application methods that belong to the given package.
+     * Returns concrete methods of concrete classes in the current Scene matching the package prefix.
      *
-     * @param packageName the name of the package for which to retrieve all application methods
-     * @return a set of all application methods that belong to the given package
+     * @param packageName the prefix used to match class names in the current Scene
+     * @return concrete methods in matching concrete classes
      */
     public Set<SootMethod> getMethodsFromPackage(String packageName) {
         Set<SootMethod> methods = new HashSet<>();
@@ -359,19 +296,17 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of all Soot methods in the Scene. The methods are computed and stored
-     * in a class field the first time this method is called, and the stored value is used for
-     * subsequent calls.
+     * Returns a fresh set of all methods in the current Scene, excluding the dummy main class.
+     * Includes loaded library and framework classes, not only application classes.
      *
      * @return a set of all Soot methods in the Scene.
      */
     public Set<SootMethod> getAllMethods() {
-        if (this.allMethods.isEmpty()) {
-            for (SootClass sc : this.getClasses()) {
-                this.allMethods.addAll(sc.getMethods());
-            }
+        Set<SootMethod> methods = new HashSet<>();
+        for (SootClass sc : getClasses()) {
+            methods.addAll(sc.getMethods());
         }
-        return this.allMethods;
+        return methods;
     }
 
     /**
@@ -380,20 +315,19 @@ public class SootUtils {
      * @return a Set of SootClass objects representing all classes in the Soot Scene
      */
     public Set<SootClass> getClasses() {
-        if (this.classes.isEmpty()) {
-            for (SootClass sc : Scene.v().getClasses()) {
-                if (!isDummyMainClass(sc)) {
-                    this.classes.add(sc);
-                }
+        Set<SootClass> classes = new HashSet<>();
+        for (SootClass sc : Scene.v().getClasses()) {
+            if (!isDummyMainClass(sc)) {
+                classes.add(sc);
             }
         }
-        return this.classes;
+        return classes;
     }
 
     /**
-     * Returns a set of all the classes in the scene, including library classes.
+     * Returns a fresh set of all classes in the Scene, including libraries but excluding dummy main.
      *
-     * @return a set of all the classes in the scene, including library classes.
+     * @return all current Scene classes except dummy main
      */
     public Set<SootClass> getAllClasses() {
         return new HashSet<>(this.getClasses());
@@ -402,18 +336,16 @@ public class SootUtils {
     /**
      * Returns a set of all Soot methods except those for which their class is part of the AndroLibZoo library whitelist.
      * <p>
-     * This method caches the results to prevent unnecessary computation in repeated calls. If the cache is null, it calculates
-     * the set of all non-library Soot methods and stores it in the cache. Otherwise, it returns the cached result.
+     * Returns a fresh set so Scene changes and Soot resets are reflected immediately.
      *
      * @return A set of all non-library Soot methods in the Scene.
      */
     public Set<SootMethod> getAllMethodsExceptLibraries() {
-        if (this.allMethodsExceptLibraries.isEmpty()) {
-            for (SootClass sc : this.getNonLibraryClasses()) {
-                allMethodsExceptLibraries.addAll(sc.getMethods());
-            }
+        Set<SootMethod> methods = new HashSet<>();
+        for (SootClass sc : getNonLibraryClasses()) {
+            methods.addAll(sc.getMethods());
         }
-        return this.allMethodsExceptLibraries;
+        return methods;
     }
 
     /**
@@ -423,25 +355,33 @@ public class SootUtils {
      * @return a set of all the methods in the given call graph
      */
     public Set<SootMethod> getMethodsInCallGraph(CallGraph cg) {
-        if (this.allMethodsInCallGraph.isEmpty()) {
-            populateCallGraphSets(cg);
+        Set<SootMethod> methods = new HashSet<>();
+        for (Edge edge : cg) {
+            SootMethod source = edge.src();
+            SootMethod target = edge.tgt();
+            if (source != null && !isDummyMainClass(source.getDeclaringClass())) {
+                methods.add(source);
+            }
+            if (target != null && !isDummyMainClass(target.getDeclaringClass())) {
+                methods.add(target);
+            }
         }
-        return this.allMethodsInCallGraph;
+        return methods;
     }
 
 
     /**
      * Returns a set of all the methods in the given call graph that are not from libraries.
-     * The method uses a cached set of methods if available to improve performance.
+     * The returned set reflects the current graph and Scene, excluding dummy main methods.
      *
      * @param cg the call graph to extract methods from
      * @return a set of all the methods in the given call graph that are not from libraries
      */
     public Set<SootMethod> getMethodsInCallGraphExceptLibraries(CallGraph cg) {
-        if (this.allMethodsInCallGraphExceptLibraries.isEmpty()) {
-            populateCallGraphSets(cg);
-        }
-        return this.allMethodsInCallGraphExceptLibraries;
+        Set<SootClass> nonLibraryClasses = getNonLibraryClasses();
+        Set<SootMethod> methods = getMethodsInCallGraph(cg);
+        methods.removeIf(method -> !nonLibraryClasses.contains(method.getDeclaringClass()));
+        return methods;
     }
 
 
@@ -452,14 +392,9 @@ public class SootUtils {
      * @return a Set of SootClass objects representing non-library classes in the Soot Scene.
      */
     public Set<SootClass> getNonLibraryClasses() {
-        if (this.nonLibraryClasses.isEmpty()) {
-            for (SootClass sc : this.getClasses()) {
-                if (!LibrariesManager.v().isLibrary(sc)) {
-                    this.nonLibraryClasses.add(sc);
-                }
-            }
-        }
-        return this.nonLibraryClasses;
+        Set<SootClass> classes = getClasses();
+        classes.removeIf(sc -> LibrariesManager.v().isLibrary(sc));
+        return classes;
     }
 
     /**

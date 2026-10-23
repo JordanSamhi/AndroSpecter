@@ -26,9 +26,10 @@ package com.jordansamhi.androspecter;
  */
 
 import com.jordansamhi.androspecter.printers.Writer;
-import java.util.Calendar;
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The TimeOut class provides a simple mechanism for setting a timeout duration,
@@ -38,9 +39,10 @@ import java.util.TimerTask;
  */
 public class TimeOut {
 
-    private final Timer timer;
-    private final TimerTask exitTask;
+    private Timer timer;
+    private final Runnable action;
     private final int timeout;
+    private boolean cancelled;
 
     /**
      * Constructs a new TimeOut object with a specified timeout duration.
@@ -48,32 +50,53 @@ public class TimeOut {
      * @param n the timeout duration in seconds; if zero, the timeout duration defaults to 60 seconds
      */
     public TimeOut(int n) {
-        this.timer = new Timer();
-        this.exitTask = new TimerTask() {
-            @Override
-            public void run() {
-                Writer.v().pwarning("Timeout reached!");
-                Writer.v().pwarning("Ending program...");
-                System.exit(1);
-            }
-        };
+        this(n, () -> {
+            Writer.v().pwarning("Timeout reached!");
+            Writer.v().pwarning("Ending program...");
+            System.exit(1);
+        });
+    }
+
+    TimeOut(int n, Runnable action) {
+        if (n < 0) {
+            throw new IllegalArgumentException("Timeout must not be negative");
+        }
+        this.action = Objects.requireNonNull(action, "action");
         this.timeout = n != 0 ? n : 60;
     }
 
     /**
      * Launches the timer with the specified timeout duration.
      */
-    public void launch() {
-        Calendar c = Calendar.getInstance();
-        c.add(Calendar.MINUTE, this.timeout);
-        this.timer.schedule(this.exitTask, c.getTime());
+    public synchronized void launch() {
+        if (cancelled || timer != null) {
+            throw new IllegalStateException("Timer has already been launched or cancelled");
+        }
+        this.timer = new Timer("androspecter-timeout", true);
+        this.timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    action.run();
+                } finally {
+                    cancelTimer();
+                }
+            }
+        }, TimeUnit.SECONDS.toMillis(this.timeout));
     }
 
     /**
      * Cancels the currently running timer, if any.
      */
-    public void cancel() {
-        this.timer.cancel();
+    public synchronized void cancel() {
+        cancelTimer();
+    }
+
+    private synchronized void cancelTimer() {
+        this.cancelled = true;
+        if (this.timer != null) {
+            this.timer.cancel();
+        }
     }
 
     /**

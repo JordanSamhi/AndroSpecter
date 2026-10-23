@@ -2,12 +2,17 @@ package com.jordansamhi.androspecter;
 
 import com.jordansamhi.androspecter.printers.Writer;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 
 /*-
@@ -42,6 +47,9 @@ import java.text.DecimalFormat;
  */
 public class AndroZooUtils {
 
+    private static final int CONNECT_TIMEOUT_MILLIS = 15000;
+    private static final int READ_TIMEOUT_MILLIS = 60000;
+
     private final String apiKey;
     private final String androzooUrl = "https://androzoo.uni.lu/api/download";
     private final String path;
@@ -75,10 +83,33 @@ public class AndroZooUtils {
      * @return the path of the downloaded APK file, or null if the download was unsuccessful or if the folder is not writeable
      */
     public String getApk(String sha256) {
+        HttpURLConnection httpConn = null;
+        Path partial = null;
         try {
+            checkInterrupted();
+            if (sha256 == null || !sha256.matches("[a-fA-F0-9]{64}")) {
+                throw new IllegalArgumentException("Expected a 64-character SHA-256 hash");
+            }
+            Path directory = Paths.get(this.path);
+            if (!Files.isDirectory(directory) || !Files.isWritable(directory)) {
+                throw new IOException("Download directory is not writable: " + directory);
+            }
+            Path destination = directory.resolve(sha256 + ".apk");
+            if (Files.exists(destination)) {
+                if (Files.isRegularFile(destination) && Files.isReadable(destination)
+                        && Files.size(destination) > 0) {
+                    checkInterrupted();
+                    return destination.toString();
+                }
+                throw new IOException("Download destination already exists but is not a readable APK file");
+            }
             String fullUrl = String.format("%s?apikey=%s&sha256=%s", this.androzooUrl, URLEncoder.encode(this.apiKey, "UTF-8"), URLEncoder.encode(sha256, "UTF-8"));
-            HttpURLConnection httpConn = (HttpURLConnection) new URL(fullUrl).openConnection();
+            checkInterrupted();
+            httpConn = openConnection(new URL(fullUrl));
             httpConn.setRequestMethod("GET");
+            httpConn.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
+            httpConn.setReadTimeout(READ_TIMEOUT_MILLIS);
+            checkInterrupted();
             int responseCode = httpConn.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 Writer.v().psuccess("APK found in AndroZoo, downloading in progress...");
@@ -86,33 +117,73 @@ public class AndroZooUtils {
                 if (fileSize != -1) {
                     Writer.v().pinfo(String.format("APK size: %s bytes", readableFileSize(fileSize)));
                 }
-                InputStream inputStream = httpConn.getInputStream();
-                String filePath = String.format("%s/%s.apk", this.path, sha256);
-                File f = new File(this.path);
-                if (!f.canWrite()) {
-                    Writer.v().perror(String.format("Cannot write file in %s", this.path));
-                    return null;
+                partial = Files.createTempFile(directory, sha256 + "-", ".part");
+                long downloaded = 0;
+                checkInterrupted();
+                try (InputStream inputStream = httpConn.getInputStream();
+                     OutputStream outputStream = Files.newOutputStream(partial)) {
+                    byte[] buffer = new byte[4096];
+                    while (true) {
+                        checkInterrupted();
+                        int bytesRead = inputStream.read(buffer);
+                        if (bytesRead == -1) {
+                            break;
+                        }
+                        checkInterrupted();
+                        outputStream.write(buffer, 0, bytesRead);
+                        downloaded += bytesRead;
+                    }
                 }
-                //TODO: Check if file exists
-                FileOutputStream outputStream = new FileOutputStream(filePath);
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
+                if (downloaded == 0 || (fileSize >= 0 && downloaded != fileSize)) {
+                    throw new IOException("Incomplete APK download");
                 }
-                outputStream.close();
-                inputStream.close();
-                Writer.v().psuccess(String.format("File downloaded and stored in %s", filePath));
-                return filePath;
+                // Never replace an existing download, including one created by another worker.
+                checkInterrupted();
+                Files.move(partial, destination);
+                partial = null;
+                Writer.v().psuccess(String.format("File downloaded and stored in %s", destination));
+                return destination.toString();
             } else {
 
                 Writer.v().perror(String.format("No file to download. Server replied with HTTP code: %s", responseCode));
             }
-            httpConn.disconnect();
         } catch (Exception e) {
+            if (e instanceof InterruptedIOException && !(e instanceof SocketTimeoutException)) {
+                Thread.currentThread().interrupt();
+            }
             Writer.v().perror(String.format("An exception occurred: %s", e.getMessage()));
+        } finally {
+            if (httpConn != null) {
+                InputStream errorStream = httpConn.getErrorStream();
+                if (errorStream != null) {
+                    try {
+                        errorStream.close();
+                    } catch (IOException ignored) {
+                        // The connection is disconnected below even if closing fails.
+                    }
+                }
+                httpConn.disconnect();
+            }
+            if (partial != null) {
+                try {
+                    Files.deleteIfExists(partial);
+                } catch (IOException e) {
+                    Writer.v().perror("Cannot remove partial download: " + partial);
+                }
+            }
         }
         return null;
+    }
+
+    /** Opens the download connection; subclasses can supply a connection for testing. */
+    protected HttpURLConnection openConnection(URL url) throws IOException {
+        return (HttpURLConnection) url.openConnection();
+    }
+
+    private void checkInterrupted() throws InterruptedIOException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedIOException("Download interrupted");
+        }
     }
 
     public static String readableFileSize(long size) {
