@@ -86,10 +86,11 @@ class AndroidAppsProcessorTest {
     }
 
     @Test
-    void timeoutInterruptsAnalysisAndShutsDownItsExecutor() throws IOException {
+    void timeoutInterruptsAnalysisAndShutsDownItsExecutor() throws IOException, InterruptedException {
         Path apk = apk("first");
         StubRedis redis = new StubRedis("first");
         AtomicBoolean interrupted = new AtomicBoolean();
+        AtomicBoolean analysisCompleted = new AtomicBoolean();
         AtomicReference<Thread> analysisThread = new AtomicReference<>();
         processor(redis, sha -> apk.toString(), 500, 1000, path -> {
             analysisThread.set(Thread.currentThread());
@@ -98,14 +99,20 @@ class AndroidAppsProcessorTest {
             } catch (InterruptedException e) {
                 interrupted.set(true);
                 Thread.currentThread().interrupt();
+            } finally {
+                analysisCompleted.set(true);
             }
         }, () -> fail("Timed-out results must not be saved")).run();
         Thread.interrupted();
 
         assertTrue(interrupted.get());
-        assertFalse(analysisThread.get().isAlive());
+        assertTrue(analysisCompleted.get(), "The analysis must finish before the processor returns");
         assertEquals(Collections.singletonList("error:first"), redis.events);
         assertFalse(Files.exists(apk));
+        // ThreadPoolExecutor signals termination from its worker's final cleanup, before
+        // Thread.run has necessarily returned. Join to check that no worker thread leaks.
+        analysisThread.get().join(2000);
+        assertFalse(analysisThread.get().isAlive());
     }
 
     @Test

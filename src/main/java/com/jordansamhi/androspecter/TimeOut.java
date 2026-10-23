@@ -26,38 +26,48 @@ package com.jordansamhi.androspecter;
  */
 
 import com.jordansamhi.androspecter.printers.Writer;
+import com.jordansamhi.androspecter.execution.CancellationSource;
+import com.jordansamhi.androspecter.execution.CancellationToken;
+import com.jordansamhi.androspecter.execution.Deadline;
+import java.time.Duration;
 import java.util.Objects;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.TimeUnit;
 
 /**
  * The TimeOut class provides a simple mechanism for setting a timeout duration,
- * launching a timer, and triggering a task when the timeout expires.
+ * launching a timer, and notifying the caller when the timeout expires.
+ * This class never terminates the JVM. Prefer {@link Deadline} for a Duration-based API.
  *
  * @author Jordan Samhi
  */
-public class TimeOut {
+public class TimeOut implements AutoCloseable {
 
-    private Timer timer;
+    private Deadline timer;
+    private final CancellationSource cancellation = new CancellationSource();
     private final Runnable action;
     private final int timeout;
     private boolean cancelled;
 
     /**
-     * Constructs a new TimeOut object with a specified timeout duration.
+     * Constructs a timeout that signals {@link #cancellationToken()} and logs expiration.
+     * Unlike older releases, this constructor never exits the JVM. Callers must observe the
+     * token or use {@link #TimeOut(int, Runnable)} to choose what expiration should do.
      *
      * @param n the timeout duration in seconds; if zero, the timeout duration defaults to 60 seconds
+     * @deprecated Use {@link Deadline#after(Duration, Runnable)} or an explicit callback.
      */
+    @Deprecated
     public TimeOut(int n) {
-        this(n, () -> {
-            Writer.v().pwarning("Timeout reached!");
-            Writer.v().pwarning("Ending program...");
-            System.exit(1);
-        });
+        this(n, () -> Writer.v().pwarning("Timeout reached; cancellation requested"));
     }
 
-    TimeOut(int n, Runnable action) {
+    /**
+     * Creates an unlaunched timeout with a caller-defined callback. Expiration first signals
+     * {@link #cancellationToken()}, then invokes the callback on a daemon thread.
+     *
+     * @param n duration in seconds; zero retains the legacy default of 60 seconds
+     * @param action callback invoked once on expiration
+     */
+    public TimeOut(int n, Runnable action) {
         if (n < 0) {
             throw new IllegalArgumentException("Timeout must not be negative");
         }
@@ -72,31 +82,30 @@ public class TimeOut {
         if (cancelled || timer != null) {
             throw new IllegalStateException("Timer has already been launched or cancelled");
         }
-        this.timer = new Timer("androspecter-timeout", true);
-        this.timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    action.run();
-                } finally {
-                    cancelTimer();
-                }
-            }
-        }, TimeUnit.SECONDS.toMillis(this.timeout));
+        this.timer = Deadline.after(Duration.ofSeconds(this.timeout), () -> {
+            cancellation.cancel();
+            action.run();
+        });
     }
 
     /**
      * Cancels the currently running timer, if any.
      */
     public synchronized void cancel() {
-        cancelTimer();
-    }
-
-    private synchronized void cancelTimer() {
         this.cancelled = true;
         if (this.timer != null) {
-            this.timer.cancel();
+            this.timer.close();
         }
+    }
+
+    /** Read-only token signalled by expiration; cancelling the timer does not signal it. */
+    public CancellationToken cancellationToken() {
+        return cancellation.token();
+    }
+
+    @Override
+    public void close() {
+        cancel();
     }
 
     /**

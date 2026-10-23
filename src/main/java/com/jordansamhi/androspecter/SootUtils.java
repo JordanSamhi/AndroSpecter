@@ -61,7 +61,8 @@ public class SootUtils {
             sm = sc.getMethod(methodName);
             return sm.makeRef();
         } catch (Exception e) {
-            e.printStackTrace();
+            org.slf4j.LoggerFactory.getLogger(SootUtils.class)
+                    .warn("Cannot resolve method {} in {}", methodName, className, e);
         }
         return null;
     }

@@ -1,10 +1,16 @@
 package com.jordansamhi.androspecter.commandlineoptions;
 
-import com.jordansamhi.androspecter.printers.Writer;
 import org.apache.commons.cli.*;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /*-
  * #%L
@@ -33,70 +39,25 @@ import java.util.List;
 
 
 /**
- * A singleton class to handle command line options parsing and validation.
- * Encapsulates Apache Commons CLI library for parsing command line options.
- *
- * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
+ * Caller-owned command-line parser. Parsing returns immutable data, never prints help,
+ * and never exits the JVM. Instances are independent; configure and use each on one thread.
  */
 public class CommandLineOptions {
-
-    /**
-     * The Apache Commons CLI Options object for regular options.
-     */
-    private Options options;
-
-    /**
-     * The Apache Commons CLI Options object for first options (like help).
-     */
-    private final Options firstOptions;
-
-    /**
-     * The Apache Commons CLI Parser object to parse command line options.
-     */
-    private final CommandLineParser parser;
-
-    /**
-     * The Apache Commons CLI CommandLine object, holds parsed command line options.
-     */
-    private CommandLine cmdLine;
-
-    /**
-     * The application name.
-     */
+    private Options options = newOptions();
+    private final List<RegisteredOption> optionList = new ArrayList<>();
+    private ParseResult lastResult;
     private String appName;
-
-    /**
-     * Singleton instance of this class.
-     */
     private static CommandLineOptions instance;
 
-    /**
-     * List of CommandLineOption objects.
-     */
-    private final List<CommandLineOption> optionList;
-
-    /**
-     * Constructor for CommandLineOptions.
-     */
-    private CommandLineOptions() {
-        this.options = new Options();
-        this.firstOptions = new Options();
-        this.parser = new DefaultParser();
-        this.optionList = new ArrayList<>();
-        final Option help = Option.builder("h")
-                .longOpt("help")
-                .desc("Prints this message")
-                .argName("h")
-                .build();
-        this.firstOptions.addOption(help);
-        this.appName = null;
+    public CommandLineOptions() {
     }
 
-    /**
-     * Returns the singleton instance of CommandLineOptions.
-     *
-     * @return The singleton instance of CommandLineOptions.
-     */
+    public CommandLineOptions(String appName) {
+        setAppName(appName);
+    }
+
+    /** @deprecated Create a new parser for each caller instead of sharing mutable global state. */
+    @Deprecated
     public static synchronized CommandLineOptions v() {
         if (instance == null) {
             instance = new CommandLineOptions();
@@ -105,47 +66,65 @@ public class CommandLineOptions {
     }
 
     /**
-     * Parses command line arguments.
+     * Parses arguments and returns a snapshot. Help is recognized alongside regular options,
+     * including when required options are absent. Unknown options and missing argument values
+     * still produce validation errors. Tokens after {@code --} are positional arguments.
      *
-     * @param args The command line arguments.
+     * @param args command-line arguments
+     * @return parsed values, positional arguments, and help text
+     * @throws ValidationException when the arguments do not match the registered options
+     * @throws IllegalStateException when no application name has been configured
      */
-    public void parseArgs(String[] args) {
-        cmdLine = null;
-        for (CommandLineOption option : optionList) {
-            option.setValue(null);
+    public ParseResult parse(String... args) {
+        clearParsedValues();
+        requireAppName();
+        if (args == null || Arrays.stream(args).anyMatch(Objects::isNull)) {
+            throw new ValidationException("Arguments must not be null", null);
         }
-        if (this.appName == null) {
-            Writer.v().perror("First sets the name of your program, use the setAppName method.");
-            System.exit(1);
-        }
-        HelpFormatter formatter;
         try {
-            CommandLine cmdFirstLine = this.parser.parse(this.firstOptions, args, true);
-            if (cmdFirstLine.hasOption("help")) {
-                formatter = new HelpFormatter();
-                formatter.printHelp(this.getAppName(), this.options, true);
-                System.exit(0);
+            // First recognize help with required checks disabled; do not mistake an option
+            // value such as --input=--help or a positional --help for a help request.
+            Options optional = new Options();
+            for (Option option : options.getOptions()) {
+                Option copy = (Option) option.clone();
+                copy.setRequired(false);
+                optional.addOption(copy);
             }
-            cmdLine = parser.parse(options, args);
-
-            for (CommandLineOption opt : optionList) {
-                if (cmdLine.hasOption(opt.getShortOpt())) {
-                    opt.setValue(cmdLine.getOptionValue(opt.getShortOpt()));
-                }
+            CommandLineParser parser = new DefaultParser(false);
+            CommandLine commandLine = parser.parse(optional, args);
+            boolean help = commandLine.hasOption("help");
+            if (!help) {
+                commandLine = parser.parse(options, args);
             }
+            lastResult = new ParseResult(commandLine, help, helpText());
+            for (RegisteredOption option : optionList) {
+                option.original.setValue(lastResult.getOptionValue(option.cli.getKey()));
+            }
+            return lastResult;
         } catch (ParseException e) {
-            Writer.v().perror(e.getMessage());
-            System.exit(1);
+            throw new ValidationException(e.getMessage(), e);
         }
     }
 
     /**
-     * Adds a CommandLineOption to the list of options.
+     * Compatibility wrapper that stores the latest result for the legacy getters.
+     * Help and errors no longer print or exit; inspect {@link #isHelpRequested()} and
+     * {@link #helpText()}, or catch {@link ValidationException} in the application.
      *
-     * @param option The CommandLineOption to add.
+     * @param args command-line arguments
+     * @deprecated Use {@link #parse(String...)} and its returned result.
+     */
+    @Deprecated
+    public void parseArgs(String[] args) {
+        parse(args);
+    }
+
+    /**
+     * Registers a snapshot of an option declaration. Later declaration changes do not modify
+     * the parser. The legacy descriptor's value is still updated after each successful parse.
      */
     public void addOption(CommandLineOption option) {
-        optionList.add(option);
+        Objects.requireNonNull(option, "option");
         Option cliOption = Option.builder(option.getShortOpt())
                 .longOpt(option.getLongOpt())
                 .desc(option.getDescription())
@@ -153,62 +132,145 @@ public class CommandLineOptions {
                 .argName(option.getLongOpt())
                 .required(option.isRequired())
                 .build();
+        for (String alias : new String[]{cliOption.getOpt(), cliOption.getLongOpt()}) {
+            if (alias != null && options.hasOption(alias)) {
+                throw new IllegalArgumentException("Option is already registered or reserved: " + alias);
+            }
+        }
         options.addOption(cliOption);
+        optionList.add(new RegisteredOption(option, cliOption));
     }
 
-    /**
-     * Returns the value of the specified option.
-     *
-     * @param longOpt The long form of the option.
-     * @return The value of the specified option, or null if not found.
-     */
-    public String getOptionValue(String longOpt) {
-        for (CommandLineOption opt : optionList) {
-            if (opt.getLongOpt().equals(longOpt)) {
-                return opt.getValue();
+    /** Returns generated help text without writing to any output stream. */
+    public String helpText() {
+        requireAppName();
+        StringWriter text = new StringWriter();
+        PrintWriter writer = new PrintWriter(text);
+        new HelpFormatter().printHelp(writer, 100, appName, null, options, 2, 2, null, true);
+        writer.flush();
+        return text.toString();
+    }
+
+    public boolean isHelpRequested() {
+        return lastResult != null && lastResult.helpRequested();
+    }
+
+    /** @deprecated Read values from the immutable result returned by {@link #parse(String...)}. */
+    @Deprecated
+    public String getOptionValue(String name) {
+        if (name == null) {
+            return null;
+        }
+        for (RegisteredOption option : optionList) {
+            if (Objects.equals(option.cli.getOpt(), name)
+                    || Objects.equals(option.cli.getLongOpt(), name)) {
+                return option.original.getValue();
             }
         }
         return null;
     }
 
-    /**
-     * Returns whether an option is set.
-     *
-     * @param shortOpt The short form of the option.
-     * @return Whether the option is set or not.
-     */
-    public boolean hasOption(String shortOpt) {
-        return cmdLine != null && cmdLine.hasOption(shortOpt);
+    /** @deprecated Read option presence from the result returned by {@link #parse(String...)}. */
+    @Deprecated
+    public boolean hasOption(String name) {
+        return lastResult != null && lastResult.hasOption(name);
     }
 
-    /**
-     * Clears registered options and parsed values so this singleton can be configured for another run.
-     */
+    /** Clears the configuration and the latest parse result, retaining built-in help. */
     public void reset() {
-        for (CommandLineOption option : optionList) {
-            option.setValue(null);
-        }
-        options = new Options();
+        clearParsedValues();
+        options = newOptions();
         optionList.clear();
-        cmdLine = null;
         appName = null;
     }
 
-    /**
-     * Returns the application name.
-     *
-     * @return The application name.
-     */
     public String getAppName() {
         return appName;
     }
 
-    /**
-     * Sets the application name.
-     *
-     * @param appName The application name.
-     */
     public void setAppName(String appName) {
+        if (appName == null || appName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Application name must not be blank");
+        }
         this.appName = appName;
+    }
+
+    private void requireAppName() {
+        if (appName == null) {
+            throw new IllegalStateException("Set the application name before parsing arguments");
+        }
+    }
+
+    private void clearParsedValues() {
+        lastResult = null;
+        for (RegisteredOption option : optionList) {
+            option.original.setValue(null);
+        }
+    }
+
+    private static Options newOptions() {
+        return new Options().addOption(Option.builder("h").longOpt("help").desc("Show help").build());
+    }
+
+    private static final class RegisteredOption {
+        private final CommandLineOption original;
+        private final Option cli;
+
+        private RegisteredOption(CommandLineOption original, Option cli) {
+            this.original = original;
+            this.cli = cli;
+        }
+    }
+
+    /** Immutable snapshot independent of subsequent parses or descriptor mutations. */
+    public static final class ParseResult {
+        private final Map<String, String> values;
+        private final List<String> arguments;
+        private final boolean helpRequested;
+        private final String helpText;
+
+        private ParseResult(CommandLine commandLine, boolean helpRequested, String helpText) {
+            Map<String, String> parsed = new LinkedHashMap<>();
+            for (Option option : commandLine.getOptions()) {
+                String value = commandLine.getOptionValue(option.getKey());
+                if (option.getOpt() != null) {
+                    parsed.put(option.getOpt(), value);
+                }
+                if (option.getLongOpt() != null) {
+                    parsed.put(option.getLongOpt(), value);
+                }
+            }
+            this.values = Collections.unmodifiableMap(parsed);
+            this.arguments = List.copyOf(Arrays.asList(commandLine.getArgs()));
+            this.helpRequested = helpRequested;
+            this.helpText = helpText;
+        }
+
+        public boolean helpRequested() {
+            return helpRequested;
+        }
+
+        public String helpText() {
+            return helpText;
+        }
+
+        public boolean hasOption(String name) {
+            return values.containsKey(name);
+        }
+
+        public String getOptionValue(String name) {
+            return values.get(name);
+        }
+
+        public List<String> arguments() {
+            return arguments;
+        }
+    }
+
+    /** Invalid command-line input, for the application to report and choose an exit status. */
+    public static final class ValidationException extends IllegalArgumentException {
+        public ValidationException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

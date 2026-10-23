@@ -61,4 +61,15 @@ public class TimeOutTest {
         timeout.cancel();
         assertThrows(IllegalStateException.class, timeout::launch);
     }
+
+    @Test
+    void legacyTimeoutSignalsCancellationAndReturnsControlWithoutExiting() throws InterruptedException {
+        CountDownLatch cancelled = new CountDownLatch(1);
+        try (TimeOut timeout = new TimeOut(1)) {
+            timeout.cancellationToken().onCancellation(cancelled::countDown);
+            timeout.launch();
+            assertTrue(cancelled.await(4, TimeUnit.SECONDS));
+            assertTrue(timeout.cancellationToken().isCancellationRequested());
+        }
+    }
 }

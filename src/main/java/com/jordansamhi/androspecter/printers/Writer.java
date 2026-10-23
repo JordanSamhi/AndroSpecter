@@ -1,5 +1,10 @@
 package com.jordansamhi.androspecter.printers;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Objects;
+
 /*-
  * #%L
  * AndroSpecter
@@ -26,68 +31,63 @@ package com.jordansamhi.androspecter.printers;
  */
 
 /**
- * Provides methods for printing messages to the console with different types of prefix indicators.
+ * Compatibility logging facade. Messages use SLF4J; the consuming application chooses
+ * its logging provider and configuration. This class does not write directly to the console.
  *
  * @author Jordan Samhi
  */
 public class Writer {
 
-    private static Writer instance;
+    private static final Writer INSTANCE = new Writer();
+    private final Logger logger;
 
     public Writer() {
+        this(LoggerFactory.getLogger(Writer.class));
+    }
+
+    /** Uses the supplied logger without changing application logging configuration. */
+    public Writer(Logger logger) {
+        this.logger = Objects.requireNonNull(logger, "logger");
     }
 
     public static Writer v() {
-        if (instance == null) {
-            instance = new Writer();
-        }
-        return instance;
+        return INSTANCE;
     }
 
     /**
-     * Prints an error message to the console, with a prefix indicating an error.
+     * Logs an error message.
      *
      * @param s the error message to print
      */
     public void perror(String s) {
-        this.print('x', s);
+        logger.error(s);
     }
 
 
     /**
-     * Prints a success message to the console, with a prefix indicating success.
+     * Logs a success message at INFO level.
      *
      * @param s the success message to print
      */
     public void psuccess(String s) {
-        this.print('✓', s);
+        logger.info(s);
     }
 
     /**
-     * Prints a warning message to the console, with a prefix indicating a warning.
+     * Logs a warning message.
      *
      * @param s the warning message to print
      */
     public void pwarning(String s) {
-        this.print('!', s);
+        logger.warn(s);
     }
 
     /**
-     * Prints an informational message to the console, with a prefix indicating information.
+     * Logs an informational message.
      *
      * @param s the informational message to print
      */
     public void pinfo(String s) {
-        this.print('*', s);
-    }
-
-    /**
-     * Prints a message to the console, with the given prefix character.
-     *
-     * @param c the prefix character to print before the message
-     * @param s the message to print
-     */
-    private void print(char c, String s) {
-        System.out.printf("[%c] %s%n", c, s);
+        logger.info(s);
     }
 }
