@@ -220,6 +220,9 @@ command-line application, use the separate [CLI distribution](cli/README.md).
   a request. Callback timeouts can leave a partial graph.
 - **Instrumentation changes the in-memory model.** APK export and signing are
   separate caller-controlled steps. Pipelines execute in order without rollback.
+  The deprecated `Logger.v().instrument()` adapter also supports Soot's body-pack
+  workers; public logger calls still belong on the creating thread. After a failed
+  legacy pack run, reset and reinitialize Soot before reacquiring the logger.
 
 See [Migration and troubleshooting](https://github.com/JordanSamhi/AndroSpecter/wiki/Migration-and-troubleshooting)
 for legacy singleton APIs, changed timeout/CLI behavior, backend diagnostics,
@@ -239,7 +242,7 @@ an Android SDK, Redis service, or AndroZoo key. Optional real-backend tests use 
 [reproducible APK fixture](src/test/fixtures/managed-analysis/README.md):
 
 ```sh
-mvn -Dtest=AndroidAnalysisApkTest \
+mvn -Dtest=AndroidAnalysisApkTest,LoggerApkTest \
     -Dandrospecter.androidPlatforms=/absolute/path/to/android-sdk/platforms test
 ```
 

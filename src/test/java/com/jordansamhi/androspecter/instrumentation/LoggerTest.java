@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -293,6 +294,301 @@ class LoggerTest {
             assertThrows(IllegalArgumentException.class, () -> logger.apply(other));
             G.reset();
             assertThrows(IllegalStateException.class, () -> logger.logAllMethods("tag", true));
+        }
+    }
+
+    @Test
+    void instanceLoggerRetainsSubclassInsertionHooks() {
+        SootClass owner = newClass("example.Target", Scene.v().getSootClass("java.lang.Object"));
+        owner.setApplicationClass();
+        JimpleBody body = emptyMethod(owner, "run");
+        int[] calls = new int[2];
+        try (AnalysisContext context = AnalysisContext.capture()) {
+            Logger logger = new Logger(context) {
+                @Override
+                public void addLogToMethod(SootMethod method, String tag, String message) {
+                    calls[0]++;
+                    super.addLogToMethod(method, tag, message);
+                }
+
+                @Override
+                public void addLogStatement(soot.util.Chain<Unit> units, Unit insertionPoint, String tag,
+                                            String message, Body target, boolean after) {
+                    calls[1]++;
+                    super.addLogStatement(units, insertionPoint, tag, message, target, after);
+                }
+            };
+            logger.logAllMethods("coverage", true);
+            logger.instrument();
+            assertArrayEquals(new int[]{1, 1}, calls);
+            assertEquals(1, body.getUnits().stream().filter(this::isProbe).count());
+
+            logger.addLogToMethod(body.getMethod(), "direct", "direct-message");
+            assertArrayEquals(new int[]{2, 2}, calls,
+                    "Direct method insertion must retain virtual dispatch to the statement hook");
+            assertEquals(2, body.getUnits().stream().filter(this::isProbe).count());
+            body.validate();
+        }
+    }
+
+    @Test
+    void legacyInstrumentRunsOnOneSootWorkerWithoutOpeningPublicAccess() throws Exception {
+        assertLegacyInstrumentWorkerExecution(1);
+    }
+
+    @Test
+    void legacyInstrumentRunsOnMultipleSootWorkersWithoutOpeningPublicAccess() throws Exception {
+        assertLegacyInstrumentWorkerExecution(2);
+    }
+
+    @Test
+    void legacyInstrumentPropagatesCallbackFailureAndRevokesWorkerAccess() throws Exception {
+        configureSyntheticBodyPacks(1);
+        SootClass owner = newClass("example.Failing", Scene.v().getSootClass("java.lang.Object"));
+        owner.setApplicationClass();
+        JimpleBody body = emptyMethod(owner, "run");
+        Logger logger = Logger.v();
+        logger.setTargetPackage("example");
+        // Registration succeeds; constructing the probe's StringConstant fails inside the worker callback.
+        logger.logAllMethods(null, true);
+        Pack pack = PackManager.v().getPack("jtp");
+        BodyTransformer original = (BodyTransformer) pack.get("jtp.methodsLogger").getTransformer();
+        pack.remove("jtp.methodsLogger");
+        Thread ownerThread = Thread.currentThread();
+        Set<Thread> failedWorkers = ConcurrentHashMap.newKeySet();
+        pack.add(new Transform("jtp.methodsLogger", new BodyTransformer() {
+            @Override
+            protected void internalTransform(Body current, String phaseName, Map<String, String> options) {
+                if (current.getMethod() != body.getMethod()) {
+                    original.transform(current, phaseName, options);
+                    return;
+                }
+                assertNotSame(ownerThread, Thread.currentThread());
+                NullPointerException failure = assertThrows(NullPointerException.class,
+                        () -> original.transform(current, phaseName, options));
+                // Test cleanup on the exact callback thread, before PackManager returns to the owner.
+                assertThrows(IllegalStateException.class, () -> logger.setTargetPackage("changed"));
+                assertThrows(IllegalStateException.class,
+                        () -> logger.addLogToMethod(current.getMethod(), "tag", "unexpected"));
+                failedWorkers.add(Thread.currentThread());
+                throw failure;
+            }
+        }));
+
+        assertThrows(NullPointerException.class, logger::instrument);
+        // Soot/Heros interrupts the waiting owner when a worker fails. Production preserves that flag;
+        // clear it only in this test so the subsequent foreign-thread guard checks can wait on their future.
+        Thread.interrupted();
+
+        assertEquals(1, failedWorkers.size());
+        assertEquals(0, body.getUnits().stream().filter(this::isProbe).count());
+        assertThrows(IllegalStateException.class, logger::instrument,
+                "A failed legacy run must require a fresh Soot scene before another run");
+        assertForeignThreadAccessRejected(logger, original, body);
+        body.validate();
+    }
+
+    @Test
+    void legacyInstrumentRejectsDelayedWorkerAfterAnotherWorkerFails() throws Exception {
+        configureSyntheticBodyPacks(2);
+        SootClass failing = newClass("example.Failing", Scene.v().getSootClass("java.lang.Object"));
+        SootClass delayed = newClass("example.Delayed", Scene.v().getSootClass("java.lang.Object"));
+        failing.setApplicationClass();
+        delayed.setApplicationClass();
+        JimpleBody failingBody = emptyMethod(failing, "run");
+        JimpleBody delayedBody = emptyMethod(delayed, "run");
+        Logger logger = Logger.v();
+        logger.setTargetPackage("example");
+        CountDownLatch workerEntered = new CountDownLatch(1);
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        CountDownLatch callbackFinished = new CountDownLatch(1);
+        AtomicReference<Thread> delayedThread = new AtomicReference<>();
+        AtomicReference<Throwable> coordinationFailure = new AtomicReference<>();
+        AtomicReference<Throwable> delayedFailure = new AtomicReference<>();
+        Pack pack = PackManager.v().getPack("jtp");
+        pack.add(new Transform("jtp.delayBeforeLogger", new BodyTransformer() {
+            @Override
+            protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
+                if (body.getMethod() == delayedBody.getMethod()) {
+                    delayedThread.set(Thread.currentThread());
+                    workerEntered.countDown();
+                    // Soot shuts down its executor on the other worker's failure. Keep this worker parked
+                    // until the owner has observed that failure and tried to restart the poisoned logger.
+                    if (!awaitLatchDespiteInterrupts(releaseWorker)) {
+                        coordinationFailure.set(new AssertionError("Owner did not release the delayed Soot worker"));
+                    }
+                } else if (body.getMethod() == failingBody.getMethod()
+                        && !awaitLatchDespiteInterrupts(workerEntered)) {
+                    coordinationFailure.set(new AssertionError("The second Soot worker never entered its before phase"));
+                }
+            }
+        }));
+        logger.logAllMethods(null, true);
+        BodyTransformer original = (BodyTransformer) pack.get("jtp.methodsLogger").getTransformer();
+        pack.remove("jtp.methodsLogger");
+        pack.add(new Transform("jtp.methodsLogger", new BodyTransformer() {
+            @Override
+            protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
+                if (body.getMethod() != delayedBody.getMethod()) {
+                    original.transform(body, phaseName, options);
+                    return;
+                }
+                try {
+                    original.transform(body, phaseName, options);
+                } catch (Throwable failure) {
+                    // Record on the owner: rethrowing here would cause another Soot interrupt during cleanup.
+                    delayedFailure.set(failure);
+                } finally {
+                    callbackFinished.countDown();
+                }
+            }
+        }));
+
+        try {
+            assertThrows(NullPointerException.class, logger::instrument);
+            Thread.interrupted(); // Consume Soot's failure notification only in the test.
+            assertEquals(0, workerEntered.getCount());
+            assertEquals(1, callbackFinished.getCount(), "The delayed callback must still be held after owner failure");
+            assertThrows(IllegalStateException.class, logger::instrument);
+        } finally {
+            releaseWorker.countDown();
+            Thread worker = delayedThread.get();
+            if (worker != null) {
+                // Join the actual executor thread, not only its callback, before @AfterEach resets global Soot.
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (worker.isAlive() && System.nanoTime() < deadline) {
+                    try {
+                        TimeUnit.NANOSECONDS.timedJoin(worker, Math.max(1, deadline - System.nanoTime()));
+                    } catch (InterruptedException ignored) {
+                        // Test cleanup must finish even if Soot's owner notification arrives late.
+                    }
+                }
+                assertFalse(worker.isAlive(), "The delayed Soot worker must exit before scene teardown");
+            }
+            Thread.interrupted();
+        }
+
+        assertNull(coordinationFailure.get(), () -> String.valueOf(coordinationFailure.get()));
+        assertNotNull(delayedThread.get());
+        assertEquals(0, callbackFinished.getCount());
+        assertInstanceOf(IllegalStateException.class, delayedFailure.get());
+        assertEquals(0, delayedBody.getUnits().stream().filter(this::isProbe).count());
+        delayedBody.validate();
+    }
+
+    private static boolean awaitLatchDespiteInterrupts(CountDownLatch latch) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            try {
+                return latch.await(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException ignored) {
+                // Deliberately model a worker that finishes its unrelated transform after shutdownNow.
+            }
+        }
+        return latch.getCount() == 0;
+    }
+
+    private void assertLegacyInstrumentWorkerExecution(int workers) throws Exception {
+        configureSyntheticBodyPacks(workers);
+        SootClass first = newClass("example.First", Scene.v().getSootClass("java.lang.Object"));
+        SootClass second = newClass("example.Second", Scene.v().getSootClass("java.lang.Object"));
+        SootClass excluded = newClass("outside.Excluded", Scene.v().getSootClass("java.lang.Object"));
+        first.setApplicationClass();
+        second.setApplicationClass();
+        excluded.setApplicationClass();
+        JimpleBody firstBody = emptyMethod(first, "run");
+        JimpleBody secondBody = emptyMethod(second, "run");
+        JimpleBody excludedBody = emptyMethod(excluded, "run");
+        Set<SootMethod> selected = Set.of(firstBody.getMethod(), secondBody.getMethod());
+        Logger logger = Logger.v();
+        logger.setTargetPackage("example");
+        SootClass helper = Scene.v().getSootClass(Constants.LOG_CHECKER_CLASS);
+        Map<SootMethod, List<Unit>> helperUnits = new HashMap<>();
+        helper.getMethods().forEach(method -> helperUnits.put(method,
+                new ArrayList<>(method.getActiveBody().getUnits())));
+        Thread ownerThread = Thread.currentThread();
+        Set<Thread> callbackThreads = ConcurrentHashMap.newKeySet();
+        Map<SootMethod, List<String>> order = new ConcurrentHashMap<>();
+        CyclicBarrier concurrentClasses = workers > 1 ? new CyclicBarrier(2) : null;
+        Pack pack = PackManager.v().getPack("jtp");
+        pack.add(new Transform("jtp.beforeLogger", new BodyTransformer() {
+            @Override
+            protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
+                if (!selected.contains(body.getMethod())) return;
+                assertNotSame(ownerThread, Thread.currentThread());
+                callbackThreads.add(Thread.currentThread());
+                order.computeIfAbsent(body.getMethod(), ignored -> new ArrayList<>()).add("before");
+                assertEquals(0, body.getUnits().stream().filter(LoggerTest.this::isProbe).count());
+                assertThrows(IllegalStateException.class, () -> logger.setTargetPackage("changed"));
+                if (concurrentClasses != null) {
+                    try {
+                        concurrentClasses.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    } catch (BrokenBarrierException | TimeoutException failure) {
+                        throw new AssertionError("Expected two application classes on distinct Soot workers", failure);
+                    }
+                }
+            }
+        }));
+        logger.logAllMethods("coverage", true);
+        BodyTransformer original = (BodyTransformer) pack.get("jtp.methodsLogger").getTransformer();
+        pack.add(new Transform("jtp.afterLogger", new BodyTransformer() {
+            @Override
+            protected void internalTransform(Body body, String phaseName, Map<String, String> options) {
+                if (!selected.contains(body.getMethod())) return;
+                order.get(body.getMethod()).add("after");
+                assertEquals(1, body.getUnits().stream().filter(LoggerTest.this::isProbe).count());
+                assertThrows(IllegalStateException.class, () -> logger.logAllMethods("unexpected", true));
+                assertThrows(IllegalStateException.class,
+                        () -> logger.addLogToMethod(body.getMethod(), "tag", "unexpected"));
+            }
+        }));
+
+        logger.instrument();
+
+        assertEquals(workers, callbackThreads.size());
+        for (JimpleBody body : List.of(firstBody, secondBody)) {
+            assertEquals(List.of("before", "after"), order.get(body.getMethod()));
+            assertEquals(1, body.getUnits().stream().filter(this::isProbe).count());
+            assertEquals("METHOD=" + body.getMethod().getSignature(), message(body.getUnits().getFirst()));
+            body.validate();
+        }
+        assertEquals(0, excludedBody.getUnits().stream().filter(this::isProbe).count());
+        helperUnits.forEach((method, units) -> assertEquals(units,
+                new ArrayList<>(method.getActiveBody().getUnits()), "The helper must not instrument itself"));
+        assertForeignThreadAccessRejected(logger, original, firstBody);
+        assertEquals(1, firstBody.getUnits().stream().filter(this::isProbe).count());
+        G.reset();
+        assertThrows(IllegalStateException.class, () -> logger.addLogToMethod(firstBody.getMethod(), "tag", "stale"));
+        assertThrows(IllegalStateException.class, () -> original.transform(firstBody, "jtp.methodsLogger",
+                Collections.singletonMap("enabled", "true")));
+    }
+
+    private static void assertForeignThreadAccessRejected(Logger logger, BodyTransformer registered,
+                                                         JimpleBody body) throws Exception {
+        ExecutorService foreign = Executors.newSingleThreadExecutor();
+        try {
+            foreign.submit(() -> {
+                assertThrows(IllegalStateException.class, () -> logger.setTargetPackage("changed"));
+                assertThrows(IllegalStateException.class, logger::instrument);
+                assertThrows(IllegalStateException.class,
+                        () -> registered.transform(body, "jtp.methodsLogger", Collections.singletonMap("enabled", "true")));
+            }).get(10, TimeUnit.SECONDS);
+        } finally {
+            foreign.shutdownNow();
+        }
+    }
+
+    private static void configureSyntheticBodyPacks(int workers) {
+        Options.v().set_whole_program(false);
+        Options.v().set_oaat(false);
+        Options.v().set_num_threads(workers);
+        Options.v().set_output_format(Options.output_format_none);
+        // Keep real worker-backed jtp dispatch, without optimizers that require a complete SDK exception hierarchy.
+        for (String phase : List.of("jb.cp", "jb.cbf", "jb.uce", "jb.dae", "jb.cp-ule", "jop", "jap")) {
+            Options.v().setPhaseOption(phase, "enabled:false");
         }
     }
 

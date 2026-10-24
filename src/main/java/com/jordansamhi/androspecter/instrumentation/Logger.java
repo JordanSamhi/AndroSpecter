@@ -78,6 +78,12 @@ public class Logger implements Transformation {
     private final InstrumentationOptions configuration;
     private final List<BodyStep> steps = new ArrayList<>();
 
+    // Only registered legacy callbacks may borrow worker access, under this lock during instrument().
+    private final Object legacyCallbackLock = new Object();
+    private boolean legacyRunning;
+    private boolean legacyFailed;
+    private SootMethodRef legacyLogMethod;
+
     private static Logger instance;
 
     // Field to specify the target package name
@@ -134,10 +140,10 @@ public class Logger implements Transformation {
      * Its registration methods add named transforms to Soot's global {@code jtp} pack; {@link #instrument()}
      * runs all Soot packs. Reacquire after {@code G.reset()} to discard the previous logger's configuration.
      * Repeated registration of the same operation uses the same phase name and may be rejected by Soot.
-     * <p>The legacy transforms retain the creating-thread requirement. Soot's normal worker-backed body-pack
-     * execution invokes them on another thread and is rejected even with one configured worker; use an
-     * instance logger with managed {@code analysis.apply(logger)} for that workflow. Direct legacy insertion
-     * calls on the creating thread are unaffected by this limitation.
+     * <p>Public calls require the creating thread. During {@link #instrument()}, registered legacy callbacks
+     * may run on Soot's body-pack workers and are serialized by this logger. Use {@code instrument()} to
+     * execute these transforms on workers; calling {@code PackManager.runPacks()} directly does not grant
+     * worker access. Direct application of a registered transform on the creating thread remains supported.
      *
      * @return the legacy logger bound to the current scene and its first calling thread
      * @throws IllegalStateException if called from another thread, or the helper collides with an existing
@@ -183,18 +189,22 @@ public class Logger implements Transformation {
         if (context == null) {
             PackManager.v().getPack("jtp").add(new Transform(phaseName, new BodyTransformer() {
                 /**
-                 * Applies the legacy registration to an eligible body on the logger's owning thread.
+                 * Applies the legacy registration to an eligible body, serializing this logger's callbacks.
                  * @param b live body supplied by Soot
                  * @param phaseName Soot phase name; the registration already captures its operation
                  * @param options Soot phase options; not interpreted by this operation
-                 * @throws IllegalStateException if Soot dispatches on another thread or the scene is stale
+                 * @throws IllegalStateException if the scene is stale, a previous pack run failed, or a
+                 *         worker invokes this transform outside this logger's instrument() call
                  */
                 @Override
                 protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
-                    checkValid();
-                    if (acceptsMethod(b.getMethod()) && (includeLibraries || !isLibrary(b.getMethod().getDeclaringClass()))) {
-                        logic.accept(b);
-                        checkValid();
+                    synchronized (legacyCallbackLock) {
+                        checkLegacyRunNotFailed();
+                        checkTransformationValid();
+                        if (acceptsMethod(b.getMethod()) && (includeLibraries || !isLibrary(b.getMethod().getDeclaringClass()))) {
+                            logic.accept(b);
+                            checkTransformationValid();
+                        }
                     }
                 }
             }));
@@ -208,11 +218,34 @@ public class Logger implements Transformation {
         }
     }
 
-    private boolean acceptsClass(SootClass clazz) {
+    private void checkTransformationValid() {
+        if (context == null && Thread.holdsLock(legacyCallbackLock) && legacyRunning) {
+            if (scene != Scene.v()) {
+                throw new IllegalStateException("Logger must be used on its owning Soot scene");
+            }
+        } else {
+            checkValid();
+        }
+    }
+
+    private void checkLegacyRunNotFailed() {
+        if (legacyFailed) {
+            throw new IllegalStateException("A previous Logger.instrument() pack run failed; reset and reinitialize "
+                    + "Soot, then reacquire Logger.v() before running packs again");
+        }
+    }
+
+    private SootMethodRef prepareLogMethod() {
         checkValid();
+        LogCheckerClass.v().generateClass();
+        return scene.getSootClass(Constants.LOG_CHECKER_CLASS).getMethod(Constants.SUB_SIG_LOG).makeRef();
+    }
+
+    private boolean acceptsClass(SootClass clazz) {
+        checkTransformationValid();
         if (clazz.getName().equals(Constants.LOG_CHECKER_CLASS)) return false;
         boolean accepted = configuration.classFilter().test(clazz);
-        checkValid();
+        checkTransformationValid();
         if (!accepted) return false;
         String packageName = clazz.getPackageName();
         return targetPackage == null || targetPackage.isEmpty() || packageName.equals(targetPackage)
@@ -222,14 +255,14 @@ public class Logger implements Transformation {
     private boolean acceptsMethod(SootMethod method) {
         if (!acceptsClass(method.getDeclaringClass())) return false;
         boolean accepted = configuration.methodFilter().test(method);
-        checkValid();
+        checkTransformationValid();
         return accepted;
     }
 
     private boolean isLibrary(SootClass clazz) {
-        checkValid();
+        checkTransformationValid();
         boolean library = configuration.libraryFilter().isLibrary(clazz);
-        checkValid();
+        checkTransformationValid();
         return library;
     }
 
@@ -306,16 +339,20 @@ public class Logger implements Transformation {
      * @throws RuntimeException if supplied Soot objects are inconsistent, a predicate fails, or validation fails
      */
     public void addLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
-
         checkValid();
+        insertLogStatement(units, insertionPoint, tagToLog, messageToLog, b, after);
+    }
+
+    private void insertLogStatement(Chain<Unit> units, Unit insertionPoint, String tagToLog, String messageToLog, Body b, boolean after) {
+        checkTransformationValid();
         if (!acceptsMethod(b.getMethod())) return;
-        LogCheckerClass.v().generateClass();
+        SootMethodRef logMethodRef = context == null && Thread.holdsLock(legacyCallbackLock) && legacyRunning
+                ? legacyLogMethod : prepareLogMethod();
 
         // Not sure why but some methods with return type set as "void"
         // do not have a return statement in Jimple, probably a bug in Soot
         this.patchReturnStatement(b.getMethod().getReturnType(), units);
 
-        SootMethodRef logMethodRef = this.su.getMethodRef(Constants.LOG_CHECKER_CLASS, Constants.SUB_SIG_LOG);
         List<Unit> unitsToAdd = new ArrayList<>();
         List<Value> params = new ArrayList<>();
         Value tag = StringConstant.v(tagToLog);
@@ -408,13 +445,37 @@ public class Logger implements Transformation {
      */
     public void addLogToMethod(SootMethod sm, String tagToLog, String messageToLog) {
         checkValid();
+        insertLogToMethod(sm, tagToLog, messageToLog);
+    }
+
+    // Preserve virtual insertion hooks for managed subclasses. Only the legacy singleton needs the
+    // private worker path, which must not relax the guards on the public methods.
+    private void dispatchLogToMethod(SootMethod method, String tag, String message) {
+        if (context == null) {
+            insertLogToMethod(method, tag, message);
+        } else {
+            addLogToMethod(method, tag, message);
+        }
+    }
+
+    private void dispatchLogStatement(Chain<Unit> units, Unit insertionPoint, String tag, String message,
+                                      Body body, boolean after) {
+        if (context == null) {
+            insertLogStatement(units, insertionPoint, tag, message, body, after);
+        } else {
+            addLogStatement(units, insertionPoint, tag, message, body, after);
+        }
+    }
+
+    private void insertLogToMethod(SootMethod sm, String tagToLog, String messageToLog) {
+        checkTransformationValid();
         if (sm != null) {
             if (acceptsMethod(sm) && sm.isConcrete()) {
                 Body b = sm.retrieveActiveBody();
                 JimpleBody jb = (JimpleBody) b;
                 Chain<Unit> units = b.getUnits();
                 Unit entrypoint = jb.getFirstNonIdentityStmt();
-                addLogStatement(units, entrypoint, tagToLog, messageToLog, b, false);
+                dispatchLogStatement(units, entrypoint, tagToLog, messageToLog, b, false);
             }
         }
     }
@@ -440,7 +501,7 @@ public class Logger implements Transformation {
             if (this.isLogCheckerClass(sm)) {
                 return;
             }
-            addLogToMethod(sm, tagToLog, String.format("METHOD=%s", sm.getSignature()));
+            dispatchLogToMethod(sm, tagToLog, String.format("METHOD=%s", sm.getSignature()));
         });
     }
 
@@ -479,7 +540,7 @@ public class Logger implements Transformation {
             SootMethod sm = b.getMethod();
             String methodName = sm.getName();
             if (methodName.equals(Constants.INIT) || methodName.equals(Constants.CLINIT)) {
-                addLogToMethod(sm, tagToLog, String.format("CLASS=%s", sm.getDeclaringClass().getName()));
+                dispatchLogToMethod(sm, tagToLog, String.format("CLASS=%s", sm.getDeclaringClass().getName()));
             }
         });
     }
@@ -522,7 +583,7 @@ public class Logger implements Transformation {
                 }
             }
             for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
-                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
+                dispatchLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
             }
         });
     }
@@ -551,7 +612,7 @@ public class Logger implements Transformation {
             String actualComponentType = su.getComponentType(sc);
             if (actualComponentType.equals(componentType) && methods.contains(sm.getSubSignature())) {
                 // Include the callback so deduplication preserves coverage of each lifecycle method.
-                addLogToMethod(sm, tagToLog, String.format("%s=%s|%s", componentType.toUpperCase(Locale.ROOT),
+                dispatchLogToMethod(sm, tagToLog, String.format("%s=%s|%s", componentType.toUpperCase(Locale.ROOT),
                         sc.getName(), sm.getSubSignature()));
             }
         });
@@ -691,7 +752,7 @@ public class Logger implements Transformation {
                 insertionPointsToMessage.put(u, messageToLog);
             }
             for (Map.Entry<Unit, String> e : insertionPointsToMessage.entrySet()) {
-                addLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
+                dispatchLogStatement(units, e.getKey(), tagToLog, e.getValue(), b, false);
             }
         });
     }
@@ -702,23 +763,52 @@ public class Logger implements Transformation {
      * operation order. A legacy {@link #v()} logger runs all configured Soot packs, including unrelated
      * transforms and Soot's usual pack ordering. Registrations remain installed; this is not idempotent.
      * Use the managed analysis's transformation API instead when its cached call graph must be invalidated.
-     * Soot's normal body-pack executor uses worker threads, which violate the legacy logger's creating-thread
-     * check and cause an exception when a registered transform is invoked. Setting one worker does not move
-     * execution back to the calling thread. Instance loggers execute their registrations synchronously.
+     * <p>Call this method on the creating thread. Legacy execution prepares its helper on that thread, then
+     * allows registered callbacks on Soot's body-pack workers for the duration of this call. Those callbacks
+     * are serialized by this logger; public methods still reject calls from workers. Instance loggers execute
+     * their registrations synchronously and retain their context's thread and cancellation checks.
+     * <p>Failures propagate without rollback. After a failed legacy pack run, this logger rejects further
+     * pack runs: stop other Soot work, reset and reinitialize Soot, then reacquire {@link #v()}. Cleanup revokes
+     * worker access and waits for any active logger callback; it does not join unrelated Soot pack callbacks.
      *
-     * @throws IllegalStateException if the logger is no longer valid, helper generation fails, or a legacy
-     *         transform is invoked on a Soot worker thread
+     * @throws IllegalStateException if the logger is no longer valid, helper generation fails, or legacy
+     *         execution is reentrant or previously failed
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
      * @throws RuntimeException if a transformation, Soot pack, or body validation fails
      */
     public void instrument() {
         checkValid();
         if (context == null) {
-            PackManager.v().runPacks();
+            runLegacyPacks();
         } else {
             apply(context);
         }
         checkValid();
+    }
+
+    private void runLegacyPacks() {
+        synchronized (legacyCallbackLock) {
+            checkLegacyRunNotFailed();
+            if (legacyRunning) {
+                throw new IllegalStateException("Logger.instrument() cannot run Soot packs recursively");
+            }
+            legacyLogMethod = prepareLogMethod();
+            legacyRunning = true;
+        }
+        boolean completed = false;
+        try {
+            PackManager.v().runPacks();
+            checkValid();
+            completed = true;
+        } finally {
+            // Never hold this lock while waiting for Soot's workers in runPacks(). On failure Soot may
+            // leave workers finishing other transforms; revoke access before they can enter our callbacks.
+            synchronized (legacyCallbackLock) {
+                legacyRunning = false;
+                legacyFailed = !completed;
+                legacyLogMethod = null;
+            }
+        }
     }
 
     /**
