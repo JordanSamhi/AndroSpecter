@@ -35,31 +35,50 @@ import java.util.Set;
  */
 
 /**
- * Abstract class to load a file into memory and extract relevant items into a set.
+ * Base class for loading UTF-8 classpath resources into a mutable set of trimmed lines.
+ * This does not read arbitrary filesystem paths. Subclasses supply a resource name
+ * through {@link #getFile()}. Both that method and {@link #loadFile(String)} are invoked
+ * during superclass construction, before subclass fields are initialized. Instances
+ * and their entry sets are not thread-safe.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
 public abstract class FileLoader {
+    /** Loaded, deduplicated entries; mutable and unordered, without blank or whole-line comment entries. */
     protected Set<String> items;
 
+    /**
+     * Creates the entry set and loads {@link #getFile()} immediately. Overrides of
+     * {@code getFile} and {@link #loadFile(String)} must be usable before the subclass's
+     * constructor or field initializers run.
+     *
+     * @throws NullPointerException if the subclass returns a null resource name
+     * @throws IllegalStateException if the resource is missing
+     * @throws UncheckedIOException if the resource cannot be read
+     */
     protected FileLoader() {
         this.items = new HashSet<>();
         this.loadFile(this.getFile());
     }
 
     /**
-     * Abstract method that should be implemented by subclasses to return the file path or name.
-     * <p>
-     * This is typically used to provide the location of a file relevant to the subclass's functionality.
+     * Supplies the resource loaded during construction. A leading slash resolves from
+     * the classpath root; otherwise the name is relative to the concrete subclass's package.
      *
-     * @return The file path or name as a String.
+     * @return non-null classpath resource name, for example {@code /libraries.txt}
      */
     protected abstract String getFile();
 
     /**
-     * Loads UTF-8 classpath resource entries, ignoring blank lines and comments.
+     * Adds UTF-8 classpath resource entries to {@link #items}, retaining existing entries.
+     * Lines are trimmed; blank lines and lines beginning with {@code #} after trimming
+     * are skipped. Duplicate lines are collapsed. Inline comments are not removed.
+     * A read failure may leave entries from earlier lines in the set.
      *
-     * @param file the path to the file to load into memory
+     * @param file non-null resource name resolved as described by {@link #getFile()}
+     * @throws NullPointerException if {@code file} is null
+     * @throws IllegalStateException if the resource is missing
+     * @throws UncheckedIOException if the resource cannot be read
      */
     protected void loadFile(String file) {
         InputStream stream = this.getClass().getResourceAsStream(file);

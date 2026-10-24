@@ -30,6 +30,8 @@ import java.util.Objects;
  * the entire graph in browser memory; rendering limits are not an import-size limit.
  * For a smaller file, export a {@link CallGraphSnapshot#subgraph(java.util.function.Predicate)
  * filtered snapshot} first.</p>
+ * <p>The embedded indexed payload is an internal viewer format, not a {@link GraphJson}
+ * interchange document. Export JSON separately when another program must import the graph.</p>
  */
 public final class GraphHtml {
     private static final String RESOURCE_ROOT = "/com/jordansamhi/androspecter/graph/";
@@ -66,6 +68,11 @@ public final class GraphHtml {
      * Output includes all data even when the browser truncates the visible graph.
      * An I/O failure may leave partial output, so callers requiring atomic files
      * should publish a temporary file only after this method succeeds.
+     * <pre>{@code
+     * try (Writer writer = Files.newBufferedWriter(Path.of("graph.html"), StandardCharsets.UTF_8)) {
+     *     GraphHtml.write(snapshot, writer);
+     * }
+     * }</pre>
      *
      * @param graph non-null detached snapshot
      * @param destination non-null caller-owned character writer

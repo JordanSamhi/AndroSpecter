@@ -5,6 +5,8 @@ import java.util.Objects;
 /**
  * Immutable reconstructed path statement, detached from the analysis scene.
  * The statement text describes processed Jimple rather than original source code.
+ * Values can be read across threads without accessing Soot. Strings are stored as supplied,
+ * without parsing the statement or checking that it belongs to the named method.
  *
  * @param methodSignature enclosing method's Jimple signature, or null when the owner is unavailable
  * @param statement non-null processed Jimple statement text

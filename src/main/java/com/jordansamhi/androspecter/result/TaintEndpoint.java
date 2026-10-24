@@ -7,6 +7,9 @@ import java.util.Objects;
  * For filtering by the API called at an endpoint, use {@code invokedMethodSignature};
  * {@code methodSignature} identifies the enclosing method instead. Statement and
  * access-path strings describe FlowDroid's processed model and remain valid after reset.
+ * The value is safe to read across threads; it contains no live method, statement, or
+ * access-path objects. A non-null invoked signature describes a method reference and
+ * does not imply that its target was resolved or executed.
  *
  * @param description non-null textual description supplied by FlowDroid, used by the legacy formatter
  * @param methodSignature enclosing method's Jimple signature, or null when its owner is unavailable
@@ -19,6 +22,8 @@ public record TaintEndpoint(String description, String methodSignature, String s
                             String invokedMethodSignature, String accessPath) {
     /**
      * Creates a detached endpoint without resolving or retaining any live analysis objects.
+     * Apart from the non-null description, strings are accepted without validation or
+     * cross-checking; caller-created values need not have originated in FlowDroid.
      *
      * @param description non-null textual endpoint description
      * @param methodSignature enclosing method signature, or null when unavailable

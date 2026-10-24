@@ -5,6 +5,9 @@ import java.util.Objects;
 /**
  * Immutable directed edge detached from Soot. Parallel graph edges may have identical
  * component values and still occur separately in a {@link CallGraphSnapshot}.
+ * Record equality compares all five values, including statement text and position;
+ * {@link GraphDifference} deliberately uses a different identity for cross-run comparisons.
+ * All values survive scene resets and can be read across threads.
  *
  * @param source non-null source method's Jimple signature
  * @param target non-null target method's Jimple signature
@@ -16,7 +19,9 @@ import java.util.Objects;
  */
 public record CallGraphEdge(String source, String target, String callSite, String kind, int callSiteIndex) {
     /**
-     * Creates an edge from detached values without accessing Soot.
+     * Creates an edge from detached values without accessing Soot. Strings are opaque:
+     * signatures and kinds are not parsed or validated. The position is checked only
+     * against the lower bound {@code -1}; it is not checked against the statement or a body.
      *
      * @param source non-null source method signature
      * @param target non-null target method signature

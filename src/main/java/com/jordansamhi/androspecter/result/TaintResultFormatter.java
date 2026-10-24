@@ -5,7 +5,13 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 
-/** Text presentation for detached findings, also used by the legacy string-result API. */
+/**
+ * Text presentation for detached findings, also used by the legacy string-result API.
+ * Formatting accesses no Soot state and is safe after the originating analysis closes.
+ * Reports use endpoint descriptions and path statements; structured endpoint metadata
+ * such as invoked signatures and access paths is not emitted separately. The text is a
+ * human-readable report, not a lossless serialization or an HTML-escaped document.
+ */
 public final class TaintResultFormatter {
     private TaintResultFormatter() {
     }
@@ -14,6 +20,7 @@ public final class TaintResultFormatter {
      * Formats a successful analysis using the legacy report layout. Identical textual
      * reports are deduplicated in encounter order. To display a finding from an incomplete
      * result, call {@link #formatFinding(TaintFinding)} explicitly instead.
+     * Distinct structured findings can produce identical text and therefore one report.
      *
      * @param result non-null detached result with a successful completion state
      * @return immutable set of report strings, empty for a successful result with no findings
@@ -40,7 +47,7 @@ public final class TaintResultFormatter {
      * when rendering a finding from an incomplete analysis.
      *
      * @param finding non-null detached finding, including a partial finding if desired
-     * @return non-null legacy report text with source, optional path, and sink
+     * @return non-null legacy report text with source, optional path, and sink, using {@code \n} line endings
      * @throws NullPointerException if {@code finding} is null
      */
     public static String formatFinding(TaintFinding finding) {

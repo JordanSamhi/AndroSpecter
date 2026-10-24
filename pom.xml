@@ -215,7 +215,7 @@
                         <artifactId>maven-javadoc-plugin</artifactId>
                         <version>3.4.0</version>
                         <configuration>
-                            <show>public</show>
+                            <show>protected</show>
                             <doclint>all</doclint>
                             <failOnWarnings>true</failOnWarnings>
                         </configuration>

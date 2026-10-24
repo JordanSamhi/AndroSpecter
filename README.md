@@ -230,10 +230,10 @@ and common setup errors.
 ```sh
 mvn clean verify
 mvn org.apache.maven.plugins:maven-javadoc-plugin:3.4.0:javadoc \
-    -Dshow=public -Ddoclint=all -Dmaven.javadoc.failOnWarnings=true
+    -Dshow=protected -Ddoclint=all -Dmaven.javadoc.failOnWarnings=true
 ```
 
-Open `target/site/apidocs/index.html` for the public API reference. Tests use
+Open `target/site/apidocs/index.html` for public APIs and protected extension points. Tests use
 synthetic Soot bodies, generated DEX files, and local fixtures; they do not require
 an Android SDK, Redis service, or AndroZoo key. Optional real-backend tests use the
 [reproducible APK fixture](src/test/fixtures/managed-analysis/README.md):
@@ -246,7 +246,7 @@ mvn -Dtest=AndroidAnalysisApkTest \
 Analysis examples require an APK and Android platform JARs. `PrintApkInfo` needs
 only an APK; `GraphQueries` operates on exported JSON without an SDK or Soot session.
 
-Every new or changed public API must have usage-oriented Javadoc. See
+Every new or changed public API and protected extension point must have usage-oriented Javadoc. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the documentation requirements.
 
 The [release guide](RELEASING.md) describes local packaging checks, signing, and

@@ -2,7 +2,8 @@
 
 ## Public API documentation
 
-Every new or changed public method, constructor, and interface callback must
+Every new or changed public method, constructor, and interface callback, and every
+protected extension point available to subclasses, must
 have Javadoc that explains how a library developer should use it. Keep the
 documentation alongside the declaration and update it whenever behavior changes.
 
@@ -20,8 +21,14 @@ with JDK 17 or later:
 
 ```sh
 mvn org.apache.maven.plugins:maven-javadoc-plugin:3.4.0:javadoc \
-    -Dshow=public -Ddoclint=all -Dmaven.javadoc.failOnWarnings=true
+    -Dshow=protected -Ddoclint=all -Dmaven.javadoc.failOnWarnings=true
 ```
 
-The generated documentation is in `target/site/apidocs/index.html`. Resolve
-missing documentation and validation warnings rather than suppressing them.
+The generated documentation is in `target/site/apidocs/index.html`. `protected`
+includes both public API and subclass extension points. The release profile uses
+the same visibility and fails on Javadoc warnings. Resolve missing documentation
+and validation warnings rather than suppressing them.
+
+Doclint checks structure, links, and required tags, but cannot establish that a
+description matches the implementation. Review defaults, failure behavior, returned
+collection ownership, and Soot lifecycle constraints against the code as well.

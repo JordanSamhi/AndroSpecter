@@ -13,6 +13,9 @@ import java.util.TreeSet;
  * target signature, and kind; statement text and capture-time positions are ignored. Edge
  * multiplicity is compared, so adding a second equivalent call edge is still a change.
  * Analysis IDs are not compared. This describes structural differences, not their cause.
+ * No methods are resolved and no Soot state is accessed. The result and its collections
+ * can be read across threads and outlive both originating analysis sessions. The caller
+ * is responsible for choosing comparable algorithms, scopes, and analysis configurations.
  */
 public final class GraphDifference {
     private static final Comparator<EdgeIdentity> EDGE_ORDER = Comparator.comparing(EdgeIdentity::source)
@@ -35,6 +38,13 @@ public final class GraphDifference {
      * Compares node membership and edge counts in two snapshots. Each positive added or
      * removed count is the difference in multiplicity for that identity, not its total in
      * either graph. Isolated nodes participate in the node comparison. Inputs are unchanged.
+     * A changed edge kind appears as a removal of the old identity and an addition of the
+     * new identity. Changes only to statement text, position, or analysis UUID do not count.
+     * <pre>{@code
+     * GraphDifference changes = GraphDifference.between(before, after);
+     * changes.addedEdges().forEach((edge, count) ->
+     *         System.out.println(edge.source() + " -> " + edge.target() + ": +" + count));
+     * }</pre>
      *
      * @param before non-null baseline graph
      * @param after non-null graph to compare against the baseline
@@ -97,7 +107,7 @@ public final class GraphDifference {
      * Returns additional edge occurrences grouped by source, target, and kind. Changes
      * to statement text or position alone do not contribute an added occurrence.
      *
-     * @return immutable ordered map of edge identity to positive added multiplicity
+     * @return immutable map ordered lexicographically by source, target, and kind, with positive added counts
      */
     public Map<EdgeIdentity, Integer> addedEdges() {
         return addedEdges;
@@ -107,7 +117,7 @@ public final class GraphDifference {
      * Returns removed edge occurrences grouped by source, target, and kind. Counts describe
      * how many occurrences disappeared, not how many remain in the later graph.
      *
-     * @return immutable ordered map of edge identity to positive removed multiplicity
+     * @return immutable map ordered lexicographically by source, target, and kind, with positive removed counts
      */
     public Map<EdgeIdentity, Integer> removedEdges() {
         return removedEdges;
@@ -132,6 +142,7 @@ public final class GraphDifference {
     public record EdgeIdentity(String source, String target, String kind) {
         /**
          * Creates an identity without resolving methods or retaining Soot objects.
+         * Values are compared exactly as strings; no signature or kind syntax is validated.
          *
          * @param source non-null source method signature
          * @param target non-null target method signature

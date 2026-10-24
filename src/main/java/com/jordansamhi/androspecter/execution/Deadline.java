@@ -14,7 +14,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * A caller-owned deadline that invokes one callback on a daemon thread. Scheduling begins
  * immediately on creation. Use try-with-resources to disarm the callback when the operation
- * finishes; this timer neither owns nor waits for the operation being timed.
+ * finishes; this timer neither owns nor waits for the operation being timed. Each
+ * instance owns one scheduler. Its callback may start before {@link #after(Duration, Runnable)} returns,
+ * particularly for a zero delay. Closing and querying expiration are thread-safe.
+ * This utility does not access Soot and must not close an owner-thread analysis from
+ * its scheduler thread; use the callback to signal a {@link CancellationSource} instead.
  */
 public final class Deadline implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(Deadline.class);
@@ -46,17 +50,20 @@ public final class Deadline implements AutoCloseable {
     /**
      * Schedules a callback after a non-negative duration. To request cancellation, pass
      * {@code source::cancel}. The callback should return promptly. Its runtime exceptions are
-     * logged, and its scheduler is always shut down after invocation.
-     * This does not guarantee that a cooperative operation stops at the deadline.
+     * logged, and its scheduler is shut down when the invocation finishes, even if it fails.
+     * Callback failures are not thrown on the thread calling this factory. Scheduling begins
+     * immediately and may execute later than the requested delay; this is not a hard bound
+     * on either callback start time or the duration of a cooperative operation.
      * <pre>{@code
-     * try (Deadline deadline = Deadline.after(Duration.ofSeconds(30), source::cancel)) {
+     * try (CancellationSource source = new CancellationSource();
+     *      Deadline deadline = Deadline.after(java.time.Duration.ofSeconds(30), source::cancel)) {
      *     // Run the operation with source.token().
      * }
      * }</pre>
      *
-     * @param delay duration before the callback; zero schedules it immediately
-     * @param action caller-defined response to expiration
-     * @return deadline to close when the operation finishes before expiration
+     * @param delay non-null nonnegative scheduling delay; zero makes the callback eligible immediately
+     * @param action non-null caller-defined response, run at most once on the timer's daemon thread
+     * @return caller-owned deadline to close when the timed operation finishes, even if already expired
      * @throws NullPointerException if {@code delay} or {@code action} is null
      * @throws IllegalArgumentException if the delay is negative or cannot be represented in nanoseconds
      */
@@ -76,11 +83,13 @@ public final class Deadline implements AutoCloseable {
     }
 
     /**
-     * Tests whether expiration won the race with closure and started invoking its callback.
-     * The value remains true after callback completion or failure. It remains false when
-     * closed before expiration and is safe to query from another thread.
+     * Tests whether the scheduler has claimed expiration and set its expiration flag.
+     * The flag is set just before invoking the action, so true does not prove that the action
+     * has entered or completed, nor that cancellation reached the timed operation. It remains
+     * true after action completion/failure and false if closure disarmed expiration first.
+     * This method is safe to query from another thread.
      *
-     * @return true if callback invocation has begun, not necessarily finished
+     * @return the currently observed expiration flag, independent of operation completion
      */
     public boolean isExpired() {
         return expired;
@@ -89,7 +98,9 @@ public final class Deadline implements AutoCloseable {
     /**
      * Disarms a pending callback and shuts down the timer's scheduler. This method is
      * idempotent and safe to call from another thread. It neither interrupts nor waits for
-     * an action already running, and does not reset {@link #isExpired()} after expiration.
+     * an action whose invocation already won the race; that action may start or continue
+     * after this method returns. Closure does not itself invoke the action, cancel the
+     * timed operation, or reset {@link #isExpired()} after expiration.
      */
     @Override
     public void close() {

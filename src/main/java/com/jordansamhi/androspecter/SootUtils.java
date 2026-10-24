@@ -36,8 +36,16 @@ import soot.util.Chain;
 import java.util.*;
 
 /**
- * Utility class for working with the Soot framework. Provides various helper methods for working with Soot classes,
- * methods, and call graphs.
+ * Low-level helpers over the caller's current Soot scene and call graphs. Initialize an APK first with
+ * {@link #setupSoot(String, String, boolean)}, FlowDroid, or a managed
+ * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis}. Query helpers do not construct a call graph.
+ * <p>Soot objects returned by this class are borrowed, mutable references. Returned collections are new,
+ * caller-owned containers, but their Soot elements remain tied to the originating scene and must not be
+ * reused after a reset. String and numeric results are detached. Use these helpers only while the caller
+ * exclusively controls the scene; they do not check thread ownership, cancellation, or external resets.
+ * Methods that retrieve bodies can load and mutate Soot's cached representation and propagate resolution
+ * failures. Unless stated otherwise, class queries include loaded framework, library, abstract, and phantom
+ * classes and exclude only the class named {@code dummyMainClass}.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -55,8 +63,11 @@ public class SootUtils {
      * For example, use {@code "void <init>()"} for a no-argument constructor.
      * Resolution failures are logged through SLF4J and return null.
      *
-     * @param className  the name of the class that contains the method
-     * @param methodName the method sub-signature, including return type and parameter types
+     * Inherited methods are not searched. This does not load a missing class from the classpath.
+     *
+     * @param className name of a class already loaded in the scene; null is treated as a failed lookup
+     * @param methodName declared method sub-signature, including return and parameter types;
+     *                   null is treated as a failed lookup
      * @return a live method reference, or null if the class or method cannot be resolved;
      *         a successful reference must not be reused after Soot is reset
      */
@@ -74,10 +85,13 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of all superclasses of the given SootClass.
+     * Follows the superclass chain, excluding the supplied class itself. Interfaces are not visited.
+     * The hierarchy must already be resolved and acyclic; this does not load missing hierarchy information.
      *
-     * @param sootClass the SootClass for which to retrieve all superclasses
-     * @return a set of all superclasses of the given SootClass, including the immediate superclass
+     * @param sootClass non-null class from the current scene
+     * @return mutable, unordered set of borrowed superclass references; empty if there is no superclass
+     * @throws NullPointerException if {@code sootClass} is null
+     * @throws RuntimeException if Soot cannot access the loaded superclass hierarchy
      */
     public Set<SootClass> getAllSuperClasses(SootClass sootClass) {
         Set<SootClass> classes = new HashSet<>();
@@ -91,10 +105,14 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of all interfaces implemented by the given SootClass.
+     * Collects the class's directly declared interfaces and their transitive superinterfaces.
+     * This does not traverse the class's superclasses, so interfaces inherited only through a superclass
+     * are omitted. The supplied class itself is not included, even when it is an interface.
      *
-     * @param sootClass the SootClass for which to retrieve all interfaces
-     * @return a set of all interfaces implemented by the given SootClass
+     * @param sootClass non-null class or interface with a resolved, acyclic interface hierarchy
+     * @return mutable, unordered set of borrowed interface references
+     * @throws NullPointerException if {@code sootClass} is null
+     * @throws RuntimeException if Soot cannot access the loaded interface hierarchy
      */
     public Set<SootClass> getAllInterfaces(SootClass sootClass) {
         Set<SootClass> interfaces = new HashSet<>();
@@ -110,10 +128,11 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of the class names of the given list of SootClasses.
+     * Copies class names from the supplied collection, collapsing duplicates.
      *
-     * @param classes the list of SootClasses for which to retrieve the class names
-     * @return a set of the class names of the given SootClasses
+     * @param classes non-null collection of non-null classes from a valid scene
+     * @return mutable, unordered set of detached names, usable after a Soot reset
+     * @throws NullPointerException if the collection or an element is null
      */
     public Set<String> getClassNames(Collection<SootClass> classes) {
         Set<String> names = new HashSet<>();
@@ -124,10 +143,14 @@ public class SootUtils {
     }
 
     /**
-     * Returns the number of statements in the given SootMethod.
+     * Counts Jimple/body units in a concrete method, retrieving its active body if needed.
+     * Counts include identity, return, monitor, and inserted instrumentation units; they are not source
+     * statement, bytecode instruction, or executed-statement counts.
      *
-     * @param sm the SootMethod for which to count statements
-     * @return the number of statements in the given SootMethod, or 0 if the method is not concrete
+     * @param sm non-null method from the current scene
+     * @return number of units in its active body, or zero for a non-concrete method
+     * @throws NullPointerException if {@code sm} is null
+     * @throws RuntimeException if a concrete method's body cannot be loaded
      */
     public int getNumberOfStmt(SootMethod sm) {
         if (sm.isConcrete()) {
@@ -139,8 +162,11 @@ public class SootUtils {
     /**
      * Returns the total number of statements in the current Scene, excluding the dummy main class.
      * This includes loaded library and framework classes, not only application classes.
+     * Concrete bodies are retrieved as needed; all body units count as described by
+     * {@link #getNumberOfStmt(SootMethod)}. Classes or methods not loaded in the scene are not discovered.
      *
      * @return the total number of statements in the current Scene, excluding the dummy main class
+     * @throws RuntimeException if method enumeration or body loading fails
      */
     public int getNumberOfStmtInApp() {
         int total = 0;
@@ -153,8 +179,10 @@ public class SootUtils {
     /**
      * Returns the total number of statements in the current Scene after excluding known library packages
      * and the dummy main class. Library membership uses LibrariesManager, not Soot application flags.
+     * Concrete bodies are retrieved as needed, and every unit in an accepted body is counted.
      *
      * @return statements outside the dummy main class and known library packages
+     * @throws RuntimeException if library-policy loading, method enumeration, or body loading fails
      */
     public int getNumberOfStmtInAppWithoutLibraries() {
         int total = 0;
@@ -165,10 +193,13 @@ public class SootUtils {
     }
 
     /**
-     * Returns the total number of statements in a collection of SootMethod objects.
+     * Sums body-unit counts using {@link #getNumberOfStmt(SootMethod)}, loading concrete bodies if needed.
+     * A repeated method in the collection contributes its count repeatedly.
      *
-     * @param methods a collection of SootMethod objects
-     * @return the total number of statements in the given collection of SootMethod objects
+     * @param methods non-null collection of non-null methods from the current scene
+     * @return sum of unit counts, with non-concrete methods contributing zero
+     * @throws NullPointerException if the collection or an element is null
+     * @throws RuntimeException if a concrete method's body cannot be loaded
      */
     public int getNumberOfStmt(Collection<SootMethod> methods) {
         int total = 0;
@@ -179,10 +210,12 @@ public class SootUtils {
     }
 
     /**
-     * Counts the number of edges in the given call graph.
+     * Returns the graph's current edge count without filtering dummy-main or library edges.
+     * Distinct edge occurrences count separately, even when their endpoint methods are equal.
      *
-     * @param cg the CallGraph object for which the count is to be calculated
+     * @param cg non-null live call graph, which must not be modified concurrently
      * @return the number of edges in the given call graph
+     * @throws NullPointerException if {@code cg} is null
      */
     public int countEdgesInCallGraph(CallGraph cg) {
         return cg.size();
@@ -190,12 +223,15 @@ public class SootUtils {
 
     /**
      * Counts the number of edges in the given call graph where the target of the edge
-     * is a method declared in a non-library class. A non-library class is defined as
-     * any class that is not part of a library.
+     * is declared by a current-scene class accepted by {@link #getNonLibraryClasses()}.
+     * The source is unrestricted, so edges from dummy main or library methods can contribute.
+     * Parallel edge occurrences count separately; this does not construct or refresh the graph.
      *
-     * @param cg the CallGraph object for which the count is to be calculated
+     * @param cg non-null live graph belonging to the current scene
      * @return the number of edges in the call graph where the target of the edge is
      * a method declared in a non-library class
+     * @throws NullPointerException if {@code cg} is null
+     * @throws RuntimeException if loading or applying the library policy fails
      */
     public int countEdgesWithNonLibraryTargets(CallGraph cg) {
         int count = 0;
@@ -216,11 +252,13 @@ public class SootUtils {
 
 
     /**
-     * This method counts the number of unique nodes in the provided call graph. A node is considered unique
-     * based on its method signature. Both source and target nodes are considered, excluding dummy main methods.
+     * Counts the distinct method objects incident to an edge, excluding endpoints declared by dummy main.
+     * Isolated scene methods are not graph nodes for this operation. Parallel edges do not increase the
+     * count when they have the same endpoint methods.
      *
-     * @param cg CallGraph object for which the unique node count is to be calculated.
-     * @return The number of unique nodes in the provided call graph.
+     * @param cg non-null live graph from a valid scene
+     * @return number of methods returned by {@link #getMethodsInCallGraph(CallGraph)}
+     * @throws NullPointerException if {@code cg} is null
      */
     public int getCountOfNodes(CallGraph cg) {
         return getMethodsInCallGraph(cg).size();
@@ -228,10 +266,15 @@ public class SootUtils {
 
 
     /**
-     * Returns the type of Android component for the given SootClass.
+     * Classifies a class by its loaded superclass chain as Activity, Service, BroadcastReceiver,
+     * ContentProvider, or non-component. This does not read the manifest or imply that the class is
+     * registered, instantiated, or externally reachable. Only ancestors are inspected: passing one of
+     * the Android base component classes itself does not classify it by its own name.
      *
-     * @param sc the SootClass for which to determine the Android component type
-     * @return the type of Android component for the given SootClass, or NON_COMPONENT if the SootClass does not correspond to an Android component
+     * @param sc non-null class with a resolved, acyclic superclass chain
+     * @return the matching {@link Constants} component string, or {@link Constants#NON_COMPONENT}
+     * @throws NullPointerException if {@code sc} is null
+     * @throws RuntimeException if Soot cannot access the loaded superclass hierarchy
      */
     public String getComponentType(SootClass sc) {
         Set<SootClass> classes = getAllSuperClasses(sc);
@@ -251,11 +294,13 @@ public class SootUtils {
     }
 
     /**
-     * Checks whether the given SootMethod is in the given CallGraph.
+     * Checks whether the method is a source or target endpoint of an edge in the supplied graph.
+     * Methods declared by dummy main and isolated methods are excluded; no results are cached.
      *
-     * @param method the SootMethod to check for in the CallGraph
-     * @param cg     the CallGraph to search for the SootMethod
-     * @return true if the SootMethod is in the CallGraph, false otherwise
+     * @param method borrowed method from the graph's scene, or null for a false result
+     * @param cg non-null live graph to inspect
+     * @return whether the method occurs among the graph's non-dummy-main endpoints
+     * @throws NullPointerException if {@code cg} is null
      */
     public boolean isInCallGraph(SootMethod method, CallGraph cg) {
         return getMethodsInCallGraph(cg).contains(method);
@@ -266,9 +311,10 @@ public class SootUtils {
      * <p>
      * Examines the current graph on every call and excludes dummy main methods.
      *
-     * @param method The SootMethod to check for in the CallGraph
-     * @param cg     The CallGraph to search for calls to the SootMethod
-     * @return True if the SootMethod is called in the CallGraph, false otherwise
+     * @param method borrowed method from the graph's scene, or null for a false result
+     * @param cg non-null live graph to inspect
+     * @return whether at least one edge targets the method, excluding dummy-main targets
+     * @throws NullPointerException if {@code cg} is null
      */
     public boolean isCalledInCallGraph(SootMethod method, CallGraph cg) {
         for (Edge edge : cg) {
@@ -282,9 +328,14 @@ public class SootUtils {
 
     /**
      * Returns concrete methods of concrete classes in the current Scene matching the package prefix.
+     * Matching uses {@code className.startsWith(packageName)} without a package-boundary check:
+     * {@code com.example} also matches {@code com.exampleother}. Include a trailing dot when a package
+     * boundary is required. Method bodies are not loaded. Concrete methods in abstract classes are omitted.
      *
-     * @param packageName the prefix used to match class names in the current Scene
-     * @return concrete methods in matching concrete classes
+     * @param packageName non-null raw class-name prefix; empty matches every class considered
+     * @return mutable, unordered set of borrowed concrete methods, excluding dummy main
+     * @throws NullPointerException if a class is examined with a null prefix
+     * @throws RuntimeException if Soot cannot enumerate the loaded method signatures
      */
     public Set<SootMethod> getMethodsFromPackage(String packageName) {
         Set<SootMethod> methods = new HashSet<>();
@@ -305,8 +356,10 @@ public class SootUtils {
     /**
      * Returns a fresh set of all methods in the current Scene, excluding the dummy main class.
      * Includes loaded library and framework classes, not only application classes.
+     * Abstract and native methods are included; bodies are not loaded.
      *
-     * @return a set of all Soot methods in the Scene.
+     * @return mutable, unordered set of borrowed method references
+     * @throws RuntimeException if Soot cannot enumerate a loaded class's method signatures
      */
     public Set<SootMethod> getAllMethods() {
         Set<SootMethod> methods = new HashSet<>();
@@ -317,9 +370,10 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of SootClass objects representing all classes in the Soot Scene except the Dummy Main Class
+     * Copies the current scene's class references, excluding the class named {@code dummyMainClass}.
+     * No application-class or library filter is applied, and no method bodies are loaded.
      *
-     * @return a Set of SootClass objects representing all classes in the Soot Scene
+     * @return mutable, unordered set of borrowed class references
      */
     public Set<SootClass> getClasses() {
         Set<SootClass> classes = new HashSet<>();
@@ -334,18 +388,20 @@ public class SootUtils {
     /**
      * Returns a fresh set of all classes in the Scene, including libraries but excluding dummy main.
      *
-     * @return all current Scene classes except dummy main
+     * @return mutable, unordered set of borrowed class references, equivalent to {@link #getClasses()}
      */
     public Set<SootClass> getAllClasses() {
         return new HashSet<>(this.getClasses());
     }
 
     /**
-     * Returns a set of all Soot methods except those for which their class is part of the AndroLibZoo library whitelist.
+     * Returns declared methods from {@link #getNonLibraryClasses()}, including abstract and native methods.
      * <p>
-     * Returns a fresh set so Scene changes and Soot resets are reflected immediately.
+     * Returns a fresh set so subsequent calls reflect scene changes. Earlier results still contain borrowed
+     * objects from their original scene. Bodies are not loaded, and Soot application flags are not consulted.
      *
-     * @return A set of all non-library Soot methods in the Scene.
+     * @return mutable, unordered set of borrowed methods, excluding dummy main and known library classes
+     * @throws RuntimeException if library-policy loading or method enumeration fails
      */
     public Set<SootMethod> getAllMethodsExceptLibraries() {
         Set<SootMethod> methods = new HashSet<>();
@@ -356,10 +412,12 @@ public class SootUtils {
     }
 
     /**
-     * Returns a set of all the methods in the given call graph.
+     * Collects both non-null endpoints of each graph edge, excluding endpoints declared by dummy main.
+     * Other endpoints of edges involving dummy main remain included. Isolated methods are not added.
      *
-     * @param cg the call graph to extract methods from
-     * @return a set of all the methods in the given call graph
+     * @param cg non-null live graph from a valid scene
+     * @return mutable, unordered set of borrowed methods, deduplicated across edge occurrences
+     * @throws NullPointerException if {@code cg} is null
      */
     public Set<SootMethod> getMethodsInCallGraph(CallGraph cg) {
         Set<SootMethod> methods = new HashSet<>();
@@ -380,9 +438,12 @@ public class SootUtils {
     /**
      * Returns a set of all the methods in the given call graph that are not from libraries.
      * The returned set reflects the current graph and Scene, excluding dummy main methods.
+     * Membership is determined by {@link #getNonLibraryClasses()}, independently of Soot application flags.
      *
-     * @param cg the call graph to extract methods from
-     * @return a set of all the methods in the given call graph that are not from libraries
+     * @param cg non-null live graph belonging to the current scene
+     * @return mutable, unordered set of borrowed endpoint methods in accepted scene classes
+     * @throws NullPointerException if {@code cg} is null
+     * @throws RuntimeException if loading or applying the library policy fails
      */
     public Set<SootMethod> getMethodsInCallGraphExceptLibraries(CallGraph cg) {
         Set<SootClass> nonLibraryClasses = getNonLibraryClasses();
@@ -393,10 +454,13 @@ public class SootUtils {
 
 
     /**
-     * Returns a set of all non-library classes in the Soot Scene.
-     * A non-library class is defined as any class that is not part of a library.
+     * Filters {@link #getClasses()} using the shared {@link LibrariesManager} package-prefix policy.
+     * This is a known-library classification, not a test of Soot application/library flags; loaded
+     * framework classes can remain when their names do not match that policy.
      *
-     * @return a Set of SootClass objects representing non-library classes in the Soot Scene.
+     * @return mutable, unordered set of borrowed classes outside dummy main and the known-library policy
+     * @throws IllegalStateException if the bundled library-prefix resource is unavailable
+     * @throws java.io.UncheckedIOException if the library-prefix resource cannot be read
      */
     public Set<SootClass> getNonLibraryClasses() {
         Set<SootClass> classes = getClasses();
@@ -405,21 +469,31 @@ public class SootUtils {
     }
 
     /**
-     * Checks whether the given SootClass is a dummy main class.
+     * Checks whether the exact class name equals {@link Constants#DUMMYMAINCLASS}.
+     * No hierarchy, method, or entry-point analysis is performed.
      *
-     * @param sc the SootClass to check for dummy main class membership
+     * @param sc non-null borrowed class
      * @return true if the SootClass is a dummy main class, false otherwise
+     * @throws NullPointerException if {@code sc} is null
      */
     public boolean isDummyMainClass(SootClass sc) {
         return sc.getName().equals(Constants.DUMMYMAINCLASS);
     }
 
     /**
-     * Sets up Soot
+     * Resets all global Soot state, configures APK input, and loads the necessary classes.
+     * Uses the supplied SDK platforms directory, allows phantom references, includes all classes, and
+     * disables output. Android logging and collection helper classes are also requested from the classpath.
+     * This does not build Android callbacks, construct a call graph, run transformation packs, or write files.
+     * The whole-program flag alone does not perform those steps.
+     * <p>All earlier Soot references and managed contexts become stale. This method acquires no managed
+     * analysis lease; do not call it while another analysis owns Soot. A loading failure can leave a partially
+     * initialized scene and does not restore the previous state.
      *
-     * @param platformPath  The path to the Android JARs.
-     * @param apkPath       The path to the APK file to be processed.
-     * @param wholeAnalysis Whether we want a whole program analysis or not
+     * @param platformPath non-null SDK platforms directory containing Android platform installations
+     * @param apkPath non-null readable APK path
+     * @param wholeAnalysis value to assign to Soot's whole-program option
+     * @throws RuntimeException if path resolution or class loading fails; paths are not prevalidated here
      */
     public void setupSoot(String platformPath, String apkPath, boolean wholeAnalysis) {
         G.reset();
@@ -436,17 +510,14 @@ public class SootUtils {
     }
 
     /**
-     * Gets the adjacency list representation of a given call graph.
+     * Copies outgoing graph edges into an adjacency map without library or dummy-main filtering.
+     * Every edge contributes a target entry, so parallel occurrences remain duplicated. Target lists follow
+     * graph iteration order; map iteration order is unspecified. Target-only and isolated methods have no key.
+     * Null endpoints, if present in the input graph, are retained. The graph itself is not modified.
      *
-     * <p>This method iterates through the provided call graph, treating each edge as a directed connection
-     * from a source method to a target method. For each edge, the source method is used as a key in the
-     * adjacency list, with the corresponding value being a list of methods that the source method directly calls.
-     * If the source method is encountered for the first time, a new list is created and added to the adjacency
-     * list with the source method as the key. The target method is then added to the source method's list of called methods.</p>
-     *
-     * @param cg the CallGraph object to transform into an adjacency list
-     * @return a Map where each key is a SootMethod object representing a source method and each value is a List of SootMethod
-     * objects representing the methods directly called by the source method
+     * @param cg non-null live call graph from a valid scene
+     * @return mutable map of mutable target lists containing borrowed Soot method references
+     * @throws NullPointerException if {@code cg} is null
      */
     public Map<SootMethod, List<SootMethod>> getCallGraphAdjacencyList(CallGraph cg) {
         Map<SootMethod, List<SootMethod>> adjacencyList = new HashMap<>();
@@ -461,12 +532,17 @@ public class SootUtils {
 
 
     /**
-     * Sets up Soot with the specified output directory.
+     * Resets and loads Soot as in {@link #setupSoot(String, String, boolean)}, but configures DEX output
+     * in the requested directory and enables forced overwrite of existing Soot output files.
+     * This only prepares output options: call the appropriate Soot pack/output operations separately to
+     * transform and write an APK or DEX files. It does not sign or install an APK.
+     * Previous Soot references and contexts become stale, including when loading subsequently fails.
      *
-     * @param platformPath  The path to the Android JARs.
-     * @param apkPath       The path to the APK file to be processed.
-     * @param outputPath    The directory to output the results.
-     * @param wholeAnalysis Whether we want a whole program analysis or not
+     * @param platformPath non-null SDK platforms directory containing Android platform installations
+     * @param apkPath non-null readable APK path
+     * @param outputPath non-null output directory, not a destination APK filename
+     * @param wholeAnalysis value to assign to Soot's whole-program option
+     * @throws RuntimeException if path resolution or class loading fails; paths are not prevalidated here
      */
     public void setupSootWithOutput(String platformPath, String apkPath, String outputPath, boolean wholeAnalysis) {
         G.reset();

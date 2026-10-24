@@ -23,12 +23,24 @@ import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
- * Immutable indexed snapshot of all edges in a call graph, including framework and
- * generated entry points. Capture from Soot includes methods incident to edges; factories
- * can also retain explicitly supplied isolated methods. Snapshot data remains usable after G.reset().
+ * Immutable indexed snapshot of the supplied graph, without an implicit application or
+ * library filter. Capture from Soot includes methods incident to edges, including framework
+ * and generated methods when present; factories can also retain explicitly supplied isolated
+ * methods. The snapshot and all returned collections are detached, safe to read across threads,
+ * and remain usable after an analysis closes or {@code soot.G.reset()} runs.
  * Parallel edges are retained as separate list entries, even when their detached values match.
- * Queries use indexes built during capture and return immutable collections. Method
- * arguments are full Jimple signatures, for example {@code <example.App: void run()>}.
+ * Queries use indexes built at construction. Captured method identifiers are full Jimple
+ * signatures, for example {@code <example.App: void run()>}; factories also accept arbitrary
+ * non-null identifiers. Queries compare these strings exactly, without resolving methods.
+ * Unknown identifiers yield empty collections or false, rather than throwing.
+ *
+ * <p>Filtering creates a new graph and changes the domain of subsequent queries. For example,
+ * removing framework methods can also remove paths connecting two application methods.</p>
+ * <pre>{@code
+ * Set<String> reachable = graph.reachableFrom("<example.App: void run()>");
+ * CallGraphSnapshot selected = graph.subgraph(reachable::contains);
+ * String json = GraphJson.toJson(selected); // Usable after the analysis session closes.
+ * }</pre>
  */
 public final class CallGraphSnapshot {
     private final UUID analysisId;
@@ -70,7 +82,8 @@ public final class CallGraphSnapshot {
     /**
      * Creates a snapshot from detached edges without accessing Soot. Nodes are the union
      * of edge endpoints. Every edge occurrence is retained, including equal parallel edges.
-     * Input collections may be changed after this method returns.
+     * Input collections may be changed after this method returns; do not mutate them during
+     * this call. Identifiers and kinds are not validated as Jimple signatures or Soot kinds.
      *
      * @param analysisId non-null identity of the originating analysis
      * @param edges non-null collection of non-null detached edges
@@ -93,7 +106,8 @@ public final class CallGraphSnapshot {
      * Creates a snapshot with an explicit node set, including isolated methods. Repeated
      * method signatures are deduplicated, while parallel edge occurrences are preserved.
      * Signatures and edge kinds are opaque identifiers here; this factory does not parse
-     * signatures, resolve methods, or access Soot.
+     * signatures, resolve methods, or access Soot. Inputs are copied and must remain stable
+     * during this call; duplicates in {@code methods} do not create additional nodes.
      *
      * @param analysisId non-null identity of the originating analysis
      * @param methods non-null collection of non-null method signatures
@@ -123,13 +137,17 @@ public final class CallGraphSnapshot {
     /**
      * Copies and indexes all edges while the caller owns a stable Soot analysis.
      * The caller must prevent graph/body mutation and Soot resets until capture returns;
-     * this method does not acquire an analysis lock. Source positions are indexed from
-     * active bodies only: capture does not load bodies or retain any Soot object.
+     * this method does not acquire an analysis lock or validate an {@code AnalysisContext}.
+     * Source positions are indexed from active bodies only: capture does not load bodies or
+     * retain any Soot object. A source unit can have statement text but index {@code -1} if
+     * the source has no active body or that unit is absent from its active body. No signature
+     * or class-based filtering is applied.
      *
      * @param analysisId non-null identifier to associate with the captured graph
      * @param graph non-null live graph whose edges all have source and target methods
      * @return immutable, detached snapshot, independent of subsequent graph changes or resets
      * @throws NullPointerException if either argument or an edge's source or target method is null
+     * @throws RuntimeException if a Soot signature, edge, or statement cannot be read
      */
     public static CallGraphSnapshot capture(UUID analysisId, CallGraph graph) {
         Objects.requireNonNull(analysisId, "analysisId");
@@ -165,7 +183,9 @@ public final class CallGraphSnapshot {
     }
 
     /**
-     * Returns the identifier supplied at capture, for associating graph and analysis results.
+     * Returns the identifier supplied to capture or a factory, for associating graph and
+     * analysis results. Filtering preserves this identifier; it is neither a graph-content
+     * hash nor proof that two snapshots have identical contents or settings.
      *
      * @return non-null analysis identifier
      */
@@ -178,7 +198,7 @@ public final class CallGraphSnapshot {
      * by a subgraph. A snapshot captured directly from Soot includes only edge endpoints;
      * it does not enumerate all declarations in the APK.
      *
-     * @return immutable set of full method signatures in lexicographic order; empty for an empty graph
+     * @return immutable set of method identifiers in lexicographic order; empty when no nodes are present
      */
     public Set<String> methods() {
         return methods;
@@ -186,7 +206,9 @@ public final class CallGraphSnapshot {
 
     /**
      * Returns every captured edge, retaining parallel entries even if their detached values match.
-     * Edges are ordered by source, target, source-unit position, statement text, then kind.
+     * Edges are ordered lexicographically by source and target, then by numeric source-unit
+     * position, statement text (null first), and kind. Position {@code -1} sorts before
+     * known positions. This ordering does not identify an execution order.
      *
      * @return immutable ordered list of detached edges, possibly empty
      */
@@ -199,7 +221,8 @@ public final class CallGraphSnapshot {
      * Use {@link #incomingEdges(String)} to inspect individual call sites and edge kinds.
      *
      * @param method non-null full target method signature; an unknown signature is allowed
-     * @return immutable set of caller signatures, empty if no incoming edge exists
+     * @return immutable lexicographically ordered caller identifiers, empty if no incoming edge exists;
+     *         self edges include the queried method
      * @throws NullPointerException if {@code method} is null
      */
     public Set<String> callersOf(String method) {
@@ -211,7 +234,8 @@ public final class CallGraphSnapshot {
      * Use {@link #outgoingEdges(String)} to inspect individual call sites and edge kinds.
      *
      * @param method non-null full source method signature; an unknown signature is allowed
-     * @return immutable set of callee signatures, empty if no outgoing edge exists
+     * @return immutable lexicographically ordered callee identifiers, empty if no outgoing edge exists;
+     *         self edges include the queried method
      * @throws NullPointerException if {@code method} is null
      */
     public Set<String> calleesOf(String method) {
@@ -254,6 +278,7 @@ public final class CallGraphSnapshot {
 
     /**
      * Tests for at least one directed edge between two signatures, regardless of call site or kind.
+     * Unknown endpoints return false; a node has an edge to itself only if a self edge is present.
      *
      * @param source non-null full source method signature
      * @param target non-null full target method signature
@@ -369,7 +394,8 @@ public final class CallGraphSnapshot {
     /**
      * Creates an induced subgraph containing selected methods and every edge between them.
      * Selected methods remain present even when isolated. The originating analysis identity
-     * is retained and this snapshot is unchanged.
+     * is retained and this snapshot is unchanged. The predicate runs synchronously on the
+     * calling thread; it is not retained by the returned snapshot.
      *
      * @param methods predicate evaluated once for each node, in lexicographic order
      * @return immutable filtered graph, including equal parallel edges
@@ -385,6 +411,7 @@ public final class CallGraphSnapshot {
      * evaluated only when both endpoints were selected, once per edge occurrence in snapshot
      * order. Selected nodes are retained even if all incident edges are rejected. Predicate
      * failures propagate without changing this snapshot; the originating analysis ID is kept.
+     * Both predicates run synchronously on the calling thread and are not retained by the result.
      *
      * @param methods non-null node predicate, evaluated once per node in lexicographic order
      * @param edges non-null predicate restricting edges between selected nodes

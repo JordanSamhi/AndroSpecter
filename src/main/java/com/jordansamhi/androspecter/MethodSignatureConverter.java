@@ -29,8 +29,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A utility class for converting Java method signatures to Soot method signatures, and extracting various components of
- * method signatures (class name, method name, return type, and parameter names).
+ * Legacy string helpers for canonical Jimple method signatures and JVM object-type descriptors.
+ * Method helpers expect exactly the spacing in
+ * {@code <example.Widget: void send(int,java.lang.String)>}: one space after the colon,
+ * one after the return type, and no spaces in the parameter list. They neither resolve
+ * Soot methods nor validate input syntax. Malformed input can produce incorrect text
+ * or indexing exceptions. The converter has no analysis-specific state.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -55,13 +59,13 @@ public class MethodSignatureConverter {
     }
 
     /**
-     * Extracts and returns the class name from a given Jimple signature.
-     * <p>
-     * The method assumes the class name is the first space-separated value in the signature,
-     * and it is surrounded by certain characters that are trimmed (first and last character of the string).
+     * Extracts the declaring class name from a canonical full Jimple signature.
+     * For {@code <example.Widget: void send(int)>}, returns {@code example.Widget}.
      *
-     * @param sig The Jimple signature as a string.
-     * @return The class name extracted from the Jimple signature.
+     * @param sig non-null full signature with the canonical spacing described by this class
+     * @return declaring class name without the opening angle bracket or colon
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if the input lacks the expected token structure
      */
     public String getClassNameFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[0];
@@ -70,13 +74,13 @@ public class MethodSignatureConverter {
 
 
     /**
-     * Extracts and returns the method name from a given Jimple signature.
-     * <p>
-     * The method assumes the method name is the third space-separated value in the signature,
-     * and is located before the first opening parenthesis "(".
+     * Extracts the method name from a canonical full Jimple signature, retaining
+     * special names such as {@code <init>} and {@code <clinit>}.
      *
-     * @param sig The Jimple signature as a string.
-     * @return The method name extracted from the Jimple signature.
+     * @param sig non-null full signature with the canonical spacing described by this class
+     * @return method name without return type or parameters
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if the input lacks the expected token structure
      */
     public String getMethodNameFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[2];
@@ -85,12 +89,12 @@ public class MethodSignatureConverter {
 
 
     /**
-     * Extracts and returns the return type from a given Jimple signature.
-     * <p>
-     * The method assumes the return type is the second space-separated value in the signature.
+     * Extracts the return-type text from a canonical full Jimple signature.
      *
-     * @param sig The Jimple signature as a string.
-     * @return The return type extracted from the Jimple signature.
+     * @param sig non-null full signature with the canonical spacing described by this class
+     * @return return type such as {@code void}, {@code int}, or {@code java.lang.String[]}
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if the input lacks the expected token structure
      */
     public String getReturnNameFromJimpleSignature(String sig) {
         return sig.split(" ")[1];
@@ -98,13 +102,13 @@ public class MethodSignatureConverter {
 
 
     /**
-     * Extracts and returns the list of parameter types from a given Jimple signature.
-     * <p>
-     * The method assumes the method signature, which includes parameter types, is the third space-separated value in the signature,
-     * and is located within the parentheses "()". If multiple parameters exist, they are expected to be comma-separated.
+     * Extracts parameter types, not parameter variable names, in declaration order.
+     * This does not resolve types or return any live Soot objects.
      *
-     * @param sig The Jimple signature as a string.
-     * @return A list of parameter types extracted from the Jimple signature. An empty list is returned if no parameters exist.
+     * @param sig non-null full signature with the canonical spacing described by this class
+     * @return a new mutable list of type strings, empty for a no-argument method
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if the input lacks the expected token structure
      */
     public List<String> getParametersNamesFromJimpleSignature(String sig) {
         String tmp = sig.split(" ")[2];
@@ -123,10 +127,16 @@ public class MethodSignatureConverter {
 
 
     /**
-     * Converts a Java signature to a Soot signature.
+     * Converts a JVM object-type descriptor, for example {@code Ljava/lang/String;},
+     * to a dotted class name such as {@code java.lang.String}. Despite the legacy name,
+     * this does not convert method descriptors, primitive descriptors, or array descriptors.
+     * It simply removes the first and last characters and replaces slashes with dots;
+     * the {@code L} and {@code ;} delimiters are not validated.
      *
-     * @param sig the Java signature string to convert to a Soot signature string
-     * @return the Soot signature string resulting from the conversion of the Java signature string
+     * @param sig non-null object descriptor in {@code Lpackage/Class;} form
+     * @return dotted class name, not a full Jimple method signature
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if {@code sig} contains fewer than two characters
      */
     public String javaSigToSootSig(String sig) {
         return sig.substring(1, sig.length() - 1).replace("/", ".");
@@ -134,10 +144,13 @@ public class MethodSignatureConverter {
 
 
     /**
-     * Extracts the sub-signature from a given signature string.
+     * Extracts the return type, method name, and parameter types from a canonical
+     * full Jimple signature, for example {@code void send(int,java.lang.String)}.
      *
-     * @param sig the signature string from which to extract the sub-signature
-     * @return the sub-signature extracted from the given signature string
+     * @param sig non-null full signature with the canonical spacing described by this class
+     * @return sub-signature without the declaring class or enclosing angle brackets
+     * @throws NullPointerException if {@code sig} is null
+     * @throws IndexOutOfBoundsException if the input lacks the expected token structure
      */
     public String sigToSubSig(String sig) {
         StringBuilder sb = new StringBuilder();

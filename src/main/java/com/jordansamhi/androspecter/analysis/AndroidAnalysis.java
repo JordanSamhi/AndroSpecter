@@ -33,9 +33,16 @@ import java.util.stream.Collectors;
 /**
  * One Android analysis with an owned Soot lifecycle. Opening normally constructs the
  * Android entry points and call graph; class-only mode defers that work until needed.
- * Use try-with-resources on the creating
- * thread. Only one managed analysis can be open in this JVM at a time; external
- * Soot users must also coordinate access. Detached results outlive close/reset.
+ * Open, inspect, transform, analyze, and close on the same thread, using try-with-resources.
+ * Only one managed analysis can be open in this JVM at a time; external Soot users must
+ * coordinate access as well. Opening replaces existing Soot state, and closing normally
+ * resets the owned scene. Sessions do not restore a previous scene.
+ * <p>
+ * Cancellation requests may originate on another thread, but the owner must wait for an
+ * operation to return before closing the session. Graph/taint snapshots contain detached
+ * values that survive close or reset. Borrowed Soot classes, methods, bodies, and units do
+ * not. {@link #id()} and {@link #sourcesAndSinks()} remain available without live-context
+ * checks; other accessors require an open, uncancelled session on its owner thread.
  */
 public final class AndroidAnalysis implements AutoCloseable {
     private static final AtomicReference<UUID> ACTIVE = new AtomicReference<>();
@@ -63,17 +70,21 @@ public final class AndroidAnalysis implements AutoCloseable {
     }
 
     /**
-     * Opens an analysis synchronously using CHA, empty source/sink settings, and no
-     * phase timeouts. Opening resets Soot and constructs Android entry points and the
-     * call graph. Close the returned session on this same thread, for example:
+     * Opens an eager analysis synchronously using CHA, empty source/sink settings,
+     * {@link CallbackOptions#defaults()}, precise path reconstruction, disabled code
+     * elimination, and no phase timeouts or additional classpath. Thread interruption is
+     * still observed. Opening resets Soot and constructs Android entry points and the
+     * call graph. Close the returned session on this same thread. In this method-scope
+     * example, {@code apk} and {@code platforms} are existing {@link Path} values:
      * <pre>{@code
      * try (AndroidAnalysis analysis = AndroidAnalysis.open(apk, platforms)) {
      *     CallGraphSnapshot graph = analysis.callGraph();
      * }
      * }</pre>
      *
-     * @param apk readable APK file
-     * @param platforms Android SDK platforms directory containing platform versions
+     * @param apk non-null readable APK file on the default filesystem
+     * @param platforms non-null Android SDK platforms directory containing installed platform versions;
+     *                  a single {@code android.jar} is not accepted by the managed API
      * @return the initialized session owned by the calling thread
      * @throws NullPointerException if either path is null
      * @throws IllegalArgumentException if the APK is not readable or platforms is not a directory
@@ -88,9 +99,10 @@ public final class AndroidAnalysis implements AutoCloseable {
     /**
      * Creates a caller-owned builder without opening files or modifying Soot. Paths are
      * converted to absolute normalized paths now; filesystem validation occurs on opening.
+     * The mutable builder is not thread-safe and may be reused for sequential sessions.
      *
-     * @param apk APK file to analyze
-     * @param platforms Android SDK platforms directory
+     * @param apk non-null APK file to analyze; the backend requires a default-filesystem path
+     * @param platforms non-null Android SDK platforms directory, not an individual platform JAR
      * @return an independent builder with the defaults described by {@link #open(Path, Path)}
      * @throws NullPointerException if either path is null
      */
@@ -99,7 +111,9 @@ public final class AndroidAnalysis implements AutoCloseable {
     }
 
     /**
-     * Returns this session's stable identity, including after closure or cancellation.
+     * Returns this session's stable identity, including after closure, cancellation, or a Soot reset.
+     * It may be read from any thread. Multiple taint runs and graph snapshots in this session
+     * share this identifier; it is not a distinct identifier for each operation.
      *
      * @return the identifier attached to this session's detached results
      */
@@ -108,9 +122,11 @@ public final class AndroidAnalysis implements AutoCloseable {
     }
 
     /**
-     * Reads the package name extracted by FlowDroid from the APK manifest.
+     * Reads the manifest package lazily through the low-level helper. The first result,
+     * including a failed read, is cached for this session. Read failures are logged and
+     * return null instead of throwing a parsing exception; later calls do not retry.
      *
-     * @return the application's manifest package name
+     * @return the manifest package name, or null if unavailable or manifest processing failed
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
      * @throws CancellationException if cancellation or thread interruption has been requested
      */
@@ -120,9 +136,11 @@ public final class AndroidAnalysis implements AutoCloseable {
     }
 
     /**
-     * Advanced access for operations that borrow live Soot objects. Closing this
-     * view invalidates live access; close AndroidAnalysis itself to release ownership.
-     * Do not retain or use borrowed Soot objects after closure or a Soot reset.
+     * Returns the same context on each call for operations borrowing live Soot objects.
+     * Closing this view makes subsequent checked operations on the session invalid, but
+     * does not release session ownership or reset Soot; close AndroidAnalysis itself too.
+     * Do not retain or use borrowed Soot objects after closure or a Soot reset. Mutate the
+     * scene through {@link #apply(Transformation)} so graph snapshots are invalidated.
      *
      * @return this session's thread-confined context
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
@@ -135,8 +153,10 @@ public final class AndroidAnalysis implements AutoCloseable {
 
     /**
      * Returns the mutable metrics accumulator belonging only to this session. Values are
-     * caller-managed; obtaining it does not calculate metrics. Its snapshot method produces
-     * immutable detached values that remain usable after the session closes.
+     * caller-managed; obtaining it does not calculate metrics or set an application name.
+     * Repeated calls return the same accumulator. A previously obtained accumulator contains
+     * no Soot objects, remains usable after session closure, and is not cleared by closing.
+     * Its snapshot method copies the current values into an immutable detached result.
      *
      * @return this session's independent accumulator
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
@@ -150,7 +170,7 @@ public final class AndroidAnalysis implements AutoCloseable {
     /**
      * Returns the immutable source/sink settings selected when the session was opened.
      * An explicit configuration passed to a taint run does not replace these defaults.
-     * The settings remain available after closure or cancellation.
+     * The settings remain available on any thread after closure, cancellation, or Soot reset.
      *
      * @return the session's configured default source/sink signatures
      */
@@ -162,8 +182,14 @@ public final class AndroidAnalysis implements AutoCloseable {
      * Returns a detached, indexed snapshot of the current call graph. Repeated calls reuse
      * the snapshot until a transformation or taint run invalidates it. In class-only mode,
      * the first call constructs Android entry points and the graph in the existing scene.
-     * After invalidation, this method rebuilds the graph before capturing it. The snapshot contains methods
-     * incident to graph edges, not every method declared in the APK.
+     * After invalidation, this method rebuilds the graph before capturing it. The snapshot
+     * contains methods incident to graph edges, including framework and generated methods,
+     * not every method declared in the APK. Inspection predicates do not restrict this graph.
+     * <p>
+     * Direct scene/body mutations outside {@link #apply(Transformation)} are not detected and
+     * can leave the cached snapshot stale. Cancellation is checked before and after backend
+     * construction/capture; it is not a hard deadline for either operation. A callback phase
+     * timeout can leave a partial graph even when this method returns without an exception.
      *
      * @return an immutable snapshot that remains usable after this session closes
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
@@ -187,12 +213,15 @@ public final class AndroidAnalysis implements AutoCloseable {
     /**
      * Runs an inspection synchronously on the owning thread, checking the context before
      * and after it returns. Inspections should read Soot state; use {@link #apply(Transformation)}
-     * for mutations so that the cached call graph is invalidated. Callback exceptions propagate.
+     * for mutations so that the cached call graph is invalidated. This method does not
+     * promote a class-only session to graph construction. The inspection may load method
+     * bodies according to its registered callbacks. Callback exceptions propagate.
      *
      * @param inspection operation borrowing this session's live context
      * @throws NullPointerException if {@code inspection} is null
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
      * @throws CancellationException if cancellation or thread interruption is observed
+     * @throws RuntimeException if a predicate, visitor, or body-loading operation fails
      */
     public void inspect(Inspection inspection) {
         context.checkValid();
@@ -204,12 +233,16 @@ public final class AndroidAnalysis implements AutoCloseable {
      * Applies a transformation synchronously on the owning thread and invalidates the cached
      * call graph before it runs. The next {@link #callGraph()} call rebuilds that graph, even
      * if the transformation failed after making partial changes. Exceptions propagate and
-     * changes are not rolled back. Compose ordered transformations with TransformationPipeline.
+     * changes are not rolled back. This method does not itself construct a graph; transformations
+     * must not reset Soot, close the session, or retain borrowed values beyond its lifetime.
+     * Compose ordered stages with
+     * {@link com.jordansamhi.androspecter.instrumentation.TransformationPipeline}.
      *
      * @param transformation operation allowed to modify this session's Soot state
      * @throws NullPointerException if {@code transformation} is null
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
      * @throws CancellationException if cancellation or thread interruption is observed
+     * @throws RuntimeException if the transformation fails; earlier changes remain in the scene
      */
     public void apply(Transformation transformation) {
         context.checkValid();
@@ -242,9 +275,18 @@ public final class AndroidAnalysis implements AutoCloseable {
      * findings; this wrapper does not clear the thread's interrupt flag. Lifecycle misuse
      * still throws. In class-only mode, FlowDroid constructs Android entry points and a graph
      * as part of the run without resetting the loaded scene. Starting a run
-     * invalidates the cached call graph for a subsequent {@link #callGraph()} call.
+     * invalidates the cached call graph for a subsequent {@link #callGraph()} call. Each result
+     * carries this session's {@link #id()}, including when different definitions are used in
+     * successive runs. The analysis and any backend code transformations affect the live model.
+     * <p>
+     * An already-cancelled session returns an empty CANCELLED result without invoking FlowDroid.
+     * A returned backend result can contribute partial findings; an exception before it is
+     * returned yields no findings. Missing reconstructed paths do not remove findings.
+     * Diagnostics include reported backend failures and termination information, not every log
+     * warning. Callback-analysis limits can yield an incomplete model without a taint timeout
+     * status. JVM errors are not converted to result statuses.
      *
-     * @param configuration immutable sources and sinks to use for this run
+     * @param configuration non-null immutable sources and sinks to use for this run; either set may be empty
      * @return immutable findings, status, and diagnostics that outlive the session
      * @throws NullPointerException if {@code configuration} is null
      * @throws IllegalStateException if the session is closed, Soot was reset, or the caller is not its owner
@@ -277,10 +319,13 @@ public final class AndroidAnalysis implements AutoCloseable {
      * drops backend references, and resets Soot only if this session still owns the current
      * generation. A scene created by an external reset is left intact. Cleanup and lease
      * release are attempted even if the cancellation registration's close method fails.
-     * Repeated calls on the owner thread are harmless; detached results remain usable.
+     * Repeated calls on the owner thread are harmless, including after cancellation or a
+     * previous close failure. Detached results and a previously obtained metrics accumulator
+     * remain usable. This method does not cancel/close the caller's cancellation source, wait
+     * for an in-flight cancellation callback, or run pending analysis work to completion.
      *
      * @throws IllegalStateException if called from another thread
-     * @throws RuntimeException if a caller-supplied cancellation registration fails to close
+     * @throws RuntimeException if cancellation unregistration or Soot cleanup fails
      */
     @Override
     public void close() {
@@ -314,7 +359,13 @@ public final class AndroidAnalysis implements AutoCloseable {
      * changing a builder does not update an already opened session. Defaults are CHA,
      * eager initialization, precise path reconstruction, default callback discovery,
      * empty source/sink settings, no additional classpath or explicit cancellation,
-     * and disabled phase timeouts.
+     * disabled code elimination, and disabled phase timeouts. Thread interruption is
+     * observed even with no explicit token. Create builders with {@link AndroidAnalysis#builder(Path, Path)}.
+     * <p>
+     * Setters replace their respective setting. The advanced configuration callback runs
+     * on every {@link #open()} after all typed settings, regardless of setter call order,
+     * and may override ordinary backend settings. Builders may open multiple sequential
+     * sessions, but retain the same cancellation token and callback objects until replaced.
      */
     public static final class Builder {
         private final Path apk;
@@ -337,7 +388,8 @@ public final class AndroidAnalysis implements AutoCloseable {
         }
 
         /**
-         * Selects the strategy used to build the call graph.
+         * Selects the strategy used when a graph is constructed, either during eager opening
+         * or a later graph/taint operation. The default is {@link CallGraphAlgorithm#CHA}.
          *
          * @param algorithm supported call-graph algorithm
          * @return this builder
@@ -378,7 +430,9 @@ public final class AndroidAnalysis implements AutoCloseable {
 
         /**
          * Replaces callback-discovery settings without changing the separately configured callback timeout.
-         * Disabling callbacks or limiting discovery can omit Android behavior from graph and taint results.
+         * The default is {@link CallbackOptions#defaults()}. Disabling callbacks or limiting discovery
+         * can omit Android behavior from graph and taint results. The FAST analyzer does not apply
+         * the default analyzer's callback-count/depth limits or timeout in pinned FlowDroid 2.15.1.
          *
          * @param options non-null immutable callback settings
          * @return this builder
@@ -420,7 +474,9 @@ public final class AndroidAnalysis implements AutoCloseable {
          * category keys, so retaining that object does not expose the live backend configuration.
          * The callback may override ordinary options, but must not change APK/platform/source-sink file inputs,
          * Soot integration mode, disable taint execution, reset Soot, or modify FlowDroid's static settings.
-         * These changes are rejected. Additional classpath entries are validated after customization.
+         * Violations are rejected by {@link #open()}, not when this setter is called. Additional
+         * classpath entries are validated after customization. The callback is invoked once per
+         * opening attempt that reaches configuration, and its exceptions propagate from open.
          * <p>
          * The callback must only configure its argument: arbitrary external side effects cannot be rolled
          * back or sandboxed. Copying is audited against the pinned FlowDroid version. Changes to global static
@@ -453,7 +509,12 @@ public final class AndroidAnalysis implements AutoCloseable {
          * abort hook while the session is open. A caller may signal its source from another
          * thread. Cancellation does not forcibly stop callback or call-graph construction.
          *
-         * @param token caller-owned token, whose callbacks may run on the cancelling thread
+         * Closing the session unregisters its callback without closing or cancelling the source.
+         * A cancelled token remains cancelled; supply a fresh source for a later independent run.
+         * Custom tokens must return a non-null registration and support registration/cancellation
+         * across the threads used by the application. Thread interruption is also observed.
+         *
+         * @param token non-null caller-owned token, whose callbacks may run on the cancelling thread
          * @return this builder
          * @throws NullPointerException if {@code token} is null
          */
@@ -465,7 +526,10 @@ public final class AndroidAnalysis implements AutoCloseable {
         /**
          * Sets FlowDroid's callback-analysis limit. Positive durations round up to whole
          * seconds; zero disables the limit. Expiration can yield a partial callback/call graph
-         * and is not a deadline for the entire session-opening operation.
+         * and is not a deadline for the entire session-opening operation. The default is zero.
+         * This limit applies to the default callback analyzer in FlowDroid 2.15.1; FAST callback
+         * discovery does not install that timeout watcher. Disabled callback discovery performs no
+         * callback-analysis work, and class-only opening defers it until a graph or taint run.
          *
          * @param timeout nonnegative duration no greater than Integer.MAX_VALUE seconds
          * @return this builder
@@ -479,7 +543,8 @@ public final class AndroidAnalysis implements AutoCloseable {
 
         /**
          * Sets FlowDroid's data-flow phase limit. Positive durations round up to whole
-         * seconds; zero disables the limit. This is not a deadline for the entire taint run.
+         * seconds; zero disables the limit and is the default. This is not a deadline for the
+         * entire taint run and does not limit callback discovery or path reconstruction.
          *
          * @param timeout nonnegative duration no greater than Integer.MAX_VALUE seconds
          * @return this builder
@@ -493,8 +558,9 @@ public final class AndroidAnalysis implements AutoCloseable {
 
         /**
          * Sets FlowDroid's path-reconstruction phase limit. Positive durations round up to
-         * whole seconds; zero disables the limit. Flows without reconstructed paths may
-         * still be present in the returned taint findings.
+         * whole seconds; zero disables the limit and is the default. Flows without reconstructed
+         * paths may still be present in the returned taint findings. This is not a whole-run
+         * deadline and does not request paths when {@link PathReconstructionMode#NONE} is selected.
          *
          * @param timeout nonnegative duration no greater than Integer.MAX_VALUE seconds
          * @return this builder
@@ -596,15 +662,21 @@ public final class AndroidAnalysis implements AutoCloseable {
 
         /**
          * Validates paths, acquires exclusive managed-session ownership, resets Soot, and
-         * loads classes and, in eager mode, constructs entry points and the call graph synchronously. Close the returned
-         * session on this thread before opening another. If opening fails, acquired
-         * ownership is released and initialization cleanup is attempted.
+         * loads classes and, in eager mode, constructs entry points and the call graph synchronously.
+         * Close the returned session on this thread before opening another. The advanced customizer
+         * runs after typed settings, once configuration is reached. No analysis inputs are downloaded.
+         * <p>
+         * Cancellation or path validation before initialization leaves existing Soot state intact.
+         * Once initialization starts, failure triggers a Soot reset and releases acquired session
+         * ownership; the previous scene is not restored. Cleanup failures are attached as suppressed
+         * exceptions to the opening failure. A builder remains reusable, but a cancelled token must
+         * be replaced before another opening can succeed.
          *
          * @return the initialized session using this builder's current settings
          * @throws IllegalArgumentException if paths/classpath are invalid or customization changes protected settings
-         * @throws IllegalStateException if another managed session is open
+         * @throws IllegalStateException if another managed session is open or the customizer resets Soot
          * @throws CancellationException if the token is cancelled or this thread is interrupted
-         * @throws RuntimeException if backend initialization or cancellation registration fails
+         * @throws RuntimeException if the customizer, backend initialization, or cancellation registration fails
          */
         public AndroidAnalysis open() {
             return openWith(new FlowdroidUtils(apk.toString()));

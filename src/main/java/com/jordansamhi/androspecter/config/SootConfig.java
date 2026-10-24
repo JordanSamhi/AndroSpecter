@@ -30,18 +30,21 @@ import soot.options.Options;
  */
 
 /**
- * Implementation of the {@link IInfoflowConfig} interface.
- * This class sets the Soot options required for the analysis, based on the given configuration.
+ * Legacy FlowDroid configuration hook that modifies Soot's global {@link Options}.
+ * Its public no-argument constructor creates a stateless hook; constructing it does
+ * not configure Soot. Invoke it only while the caller owns the current Soot scene.
  *
  * @author Jordan Samhi
  */
 public class SootConfig implements IInfoflowConfig {
 
     /**
-     * Sets the Soot options required for the analysis, based on the given configuration.
+     * Enables phantom references, whole-program mode, and the call-graph phase, and
+     * disables Soot file output. This implementation always modifies {@link Options#v()};
+     * it ignores both supplied arguments and does not reset other existing options.
      *
-     * @param options the Soot options to set
-     * @param config  the analysis configuration
+     * @param options FlowDroid-supplied options; ignored by this implementation, may be null
+     * @param config FlowDroid analysis configuration; ignored by this implementation, may be null
      */
     public void setSootOptions(Options options, InfoflowConfiguration config) {
         Options.v().set_allow_phantom_refs(true);

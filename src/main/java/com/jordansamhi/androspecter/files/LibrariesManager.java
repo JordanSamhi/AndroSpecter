@@ -68,10 +68,15 @@ public class LibrariesManager extends FileLoader {
     }
 
     /**
-     * Checks whether the given SootClass belongs to a library.
+     * Classifies a borrowed Soot class using bundled package prefixes. Matching is
+     * case-sensitive and requires a dot after the prefix, so {@code com.example}
+     * matches {@code com.example.Widget} but not {@code com.examples.Widget}.
+     * This is a name-based heuristic, independent of Soot's application/library flag;
+     * it does not establish the origin of a class. Only class names are cached.
      *
-     * @param sc the SootClass to check for library membership
-     * @return true if the SootClass belongs to a library, false otherwise
+     * @param sc non-null class from the caller's current Soot scene; not retained
+     * @return true if a bundled library-package prefix matches its name
+     * @throws NullPointerException if {@code sc} is null
      */
     public boolean isLibrary(SootClass sc) {
         String className = sc.getName();

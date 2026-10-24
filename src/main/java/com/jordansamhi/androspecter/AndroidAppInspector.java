@@ -8,10 +8,13 @@ import soot.*;
  * Legacy visitor adapter. Subclass it using the default no-argument constructor and override only the
  * callbacks needed. All three examination levels are initially enabled; disable unused levels to avoid
  * unnecessary body loading. Prefer {@link Inspection} for explicit callback registration and filtering.
+ * By default every loaded scene class is visited, including framework, library, and dummy-main classes.
+ * Traversal does not discover classes missing from the scene or restrict itself to application classes.
  * <p>Callbacks receive borrowed, mutable Soot objects from the current scene. Use those objects only on
  * the analysis's owning thread while its context remains valid. Callback edits affect the live scene;
  * collection snapshots tolerate edits but do not guarantee visits to newly added objects. Callbacks must
  * preserve valid bodies and must not reset Soot. This adapter does not invalidate cached analysis graphs.
+ * Instances retain mutable examination settings and are not designed for concurrent runs or configuration.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  * @deprecated use {@link Inspection} for composable callbacks and predicates
@@ -53,6 +56,8 @@ public abstract class AndroidAppInspector {
      * Replaces the enabled callback levels for subsequent runs. Levels are independent: disabling class
      * callbacks does not disable method or statement traversal. Disabling statement callbacks prevents
      * this adapter from loading bodies; disabling all levels makes a run only validate its context.
+     * Callback code can still load bodies itself. A run captures these switches when constructing its
+     * inspection plan, so changing them from a callback affects a later run, not the active traversal.
      *
      * @param examineClasses whether to invoke {@link #examineClass(SootClass)}
      * @param examineMethods whether to invoke {@link #examineMethod(SootClass, SootMethod)}
@@ -69,6 +74,8 @@ public abstract class AndroidAppInspector {
      * The temporary context is closed afterward without resetting the scene. This does not initialize
      * Soot or load an application; use {@link #runIn(AnalysisContext)} to retain an existing context's
      * cancellation policy. Callback and body-loading failures propagate without undoing callback edits.
+     * Capturing the temporary context does not acquire an exclusive analysis lease; the caller must already
+     * control Soot. Closing it does not close or invalidate an existing managed analysis context.
      *
      * @throws IllegalStateException if a callback invalidates the context by resetting Soot
      * @throws java.util.concurrent.CancellationException if thread interruption is observed
@@ -84,6 +91,9 @@ public abstract class AndroidAppInspector {
      * Inspects all current scene classes using the enabled callback levels and an existing context.
      * The context is checked around callbacks and remains owned by the caller; this method does not close it.
      * Class callbacks precede method callbacks, which precede the method's statement callbacks.
+     * Each class's methods and each concrete method's units are visited before moving to the next class;
+     * this is not a global classes-first/methods-second pass. Removed objects in traversal snapshots may
+     * still be visited, and newly added objects are not guaranteed a visit. Bodies are not validated afterward.
      *
      * @param context valid context for the current Soot scene
      * @throws NullPointerException if {@code context} is null

@@ -28,17 +28,25 @@ import java.util.zip.ZipFile;
  * maps distinguish absence from a declaration that could not be interpreted. Attribute keys are
  * {@code android:name} for the Android namespace, plain names without a namespace, and
  * {@code {namespace-uri}name} otherwise. Unnamed attributes use {@code #0xRESOURCEID} as their name.
+ * Lists preserve declaration order and duplicate declarations; raw attribute-map iteration
+ * order is unspecified. These parsing conventions describe {@link #read(Path)}. Public
+ * record constructors also allow caller-supplied data and do not validate manifest semantics
+ * or consistency between convenience fields and raw attributes.
  *
  * @param packageName non-null manifest package name
  * @param versionCode combined versionCodeMajor/versionCode, or null if absent or unresolved
  * @param versionName literal version name, or null if absent or resource-backed
  * @param minSdkVersion declared numeric minimum SDK, or null; no platform default is inferred
  * @param targetSdkVersion declared numeric target SDK, or null; codenames remain in sdkAttributes
- * @param usesPermissions immutable permission declarations, including SDK-qualified declarations
- * @param components immutable component declarations in manifest order, including activity aliases
- * @param manifestAttributes immutable raw manifest attributes
- * @param applicationAttributes immutable raw application attributes; empty if no application is declared
- * @param sdkAttributes immutable raw attributes of the first uses-sdk element, or an empty map
+ * @param usesPermissions non-null permission declarations without null elements; copied to an immutable list
+ *                        including SDK-qualified declarations when read from an APK
+ * @param components non-null component declarations without null elements; copied to an immutable list,
+ *                   in manifest order including activity aliases when read from an APK
+ * @param manifestAttributes non-null raw manifest attributes; copied to an immutable map without null entries
+ * @param applicationAttributes non-null raw application attributes; copied to an immutable map without null
+ *                              entries, empty when no application is declared in an APK
+ * @param sdkAttributes non-null raw SDK attributes; copied to an immutable map without null entries,
+ *                      representing the first uses-sdk element, or an empty map, when read from an APK
  */
 public record ApkInfo(String packageName, Long versionCode, String versionName,
                       Integer minSdkVersion, Integer targetSdkVersion,
@@ -51,18 +59,21 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
     private static final int TYPE_ATTRIBUTE = 0x02;
 
     /**
-     * Creates detached metadata, defensively copying all supplied collections.
+     * Creates detached metadata, defensively copying all supplied collections. Lists retain
+     * their order and duplicates; map iteration order is unspecified. Inputs must remain stable
+     * during copying. No package syntax, version range, SDK range, or cross-field consistency
+     * checks are performed beyond the documented null checks.
      *
      * @param packageName non-null package name
      * @param versionCode combined version code, or null
      * @param versionName literal version name, or null
      * @param minSdkVersion declared numeric minimum SDK, or null
      * @param targetSdkVersion declared numeric target SDK, or null
-     * @param usesPermissions permission declarations without null elements
-     * @param components component declarations without null elements
-     * @param manifestAttributes raw attributes without null keys or values
-     * @param applicationAttributes raw attributes without null keys or values
-     * @param sdkAttributes raw attributes without null keys or values
+     * @param usesPermissions non-null permission declarations without null elements
+     * @param components non-null component declarations without null elements
+     * @param manifestAttributes non-null raw attributes without null keys or values
+     * @param applicationAttributes non-null raw attributes without null keys or values
+     * @param sdkAttributes non-null raw attributes without null keys or values
      * @throws NullPointerException if a required value, collection, element, key, or value is null
      */
     public ApkInfo {
@@ -79,14 +90,16 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
      * No Soot globals are accessed, so this operation does not acquire or invalidate an analysis session.
      * Resource references are preserved as typed raw attributes rather than resolved through resources.arsc.
      * Relative and bare component names and alias targets are expanded against the manifest package.
-     * APK installation validity, signatures, and split-APK merging are not checked.
+     * Only direct manifest/application children represented by this record are extracted;
+     * arbitrary nested elements are not exposed. APK installation validity, signatures, and
+     * split-APK merging are not checked. The manifest is read fully into memory.
      * <pre>{@code
      * ApkInfo info = ApkInfo.read(Path.of("app.apk"));
      * System.out.println(info.packageName());
      * info.components().forEach(component -> System.out.println(component.name()));
      * }</pre>
      *
-     * @param apk readable APK ZIP file; no Android SDK directory is needed
+     * @param apk non-null readable APK ZIP file; no Android SDK directory is needed
      * @return immutable detached metadata
      * @throws NullPointerException if apk is null
      * @throws IOException if the ZIP or manifest cannot be read, the binary XML is malformed,
@@ -112,7 +125,8 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
      * Unresolved names are omitted here but remain represented in {@link #usesPermissions()}.
      * SDK limits and flags are not evaluated; these are requests, not granted permissions.
      *
-     * @return immutable set of declared literal permission names
+     * @return immutable set of declared literal permission names in first-declaration order,
+     *         empty when none are available
      */
     public Set<String> permissions() {
         Set<String> names = new LinkedHashSet<>();
@@ -141,6 +155,8 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
      * The type is Android's binary XML value-type number. Strings remain literal; integers are decimal;
      * booleans are {@code true}/{@code false}; references use {@code @0x12345678} and attribute references
      * use {@code ?0x12345678}. Other numeric types retain their encoded integer bits, not a decoded unit.
+     * These representations describe values produced by {@link ApkInfo#read(Path)}. The generated
+     * constructor stores the supplied type and nullable text without validation or normalization.
      *
      * @param type binary XML type, for example 3 for string, 1 for resource reference, 18 for boolean
      * @param value encoded scalar text, or null for a value without scalar content
@@ -151,19 +167,21 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
     /**
      * One permission request, without applying SDK limits or resolving resource references.
      *
-     * @param tag uses-permission, uses-permission-sdk-23, or uses-permission-sdk-m
+     * @param tag non-null tag; APK parsing produces uses-permission, uses-permission-sdk-23, or uses-permission-sdk-m
      * @param name literal permission name, or null if absent or unresolved
      * @param maxSdkVersion declared numeric maximum SDK, or null
-     * @param attributes immutable raw attributes, including any usesPermissionFlags
+     * @param attributes non-null raw attributes without null keys or values, copied to an immutable map;
+     *                   includes any usesPermissionFlags when read from an APK
      */
     public record UsesPermission(String tag, String name, Integer maxSdkVersion,
                                  Map<String, AttributeValue> attributes) {
         /**
-         * Creates a permission declaration with copied attributes.
+         * Creates a permission declaration with copied attributes. The tag and SDK value
+         * are not validated or reconciled with the raw attribute map. Map order is unspecified.
          * @param tag non-null declaration tag
          * @param name literal permission name, or null
          * @param maxSdkVersion declared numeric maximum SDK, or null
-         * @param attributes raw attributes without null entries
+         * @param attributes non-null raw attributes without null keys or values
          * @throws NullPointerException if tag or the attribute map or any entry is null
          */
         public UsesPermission {
@@ -176,27 +194,33 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
      * One component's own declarations; application attributes are not inherited here.
      * Exported is deliberately nullable and does not represent effective Android exposure. An alias's
      * name identifies the alias, while targetActivity identifies its declared implementation target.
+     * Convenience methods read this record's raw attributes regardless of component kind. They
+     * return null for absent, unresolved, or unsupported values and never consult Android defaults,
+     * application-level values, or an alias target. Returned values remain detached from the APK.
      *
      * @param kind non-null component kind
      * @param name fully qualified component or alias name, or null if absent or unresolved
      * @param declaredName literal name before expansion, or null if absent or unresolved
      * @param targetActivity expanded alias target, or null if absent or unresolved
      * @param declaredExported literal android:exported, or null if absent, unresolved, or invalid
-     * @param attributes immutable raw attributes, including provider and permission declarations
-     * @param intentFilters immutable direct intent-filter children in manifest order
+     * @param attributes non-null raw attributes without null keys or values, copied to an immutable map
+     * @param intentFilters non-null intent filters without null elements, copied to an immutable list;
+     *                      APK parsing includes direct children in manifest order
      */
     public record Component(ComponentKind kind, String name, String declaredName, String targetActivity,
                             Boolean declaredExported, Map<String, AttributeValue> attributes,
                             List<IntentFilter> intentFilters) {
         /**
-         * Creates a component declaration with copied collections.
+         * Creates a component declaration with copied collections. Names, kind-specific fields,
+         * and the declared-exported value are not checked against each other or the raw attributes.
+         * List order and duplicates are retained; map iteration order is unspecified.
          * @param kind non-null component kind
          * @param name expanded name, or null
          * @param declaredName original literal name, or null
          * @param targetActivity expanded alias target, or null
          * @param declaredExported declared boolean, or null; never an inferred exposure decision
-         * @param attributes raw attributes without null entries
-         * @param intentFilters intent filters without null entries
+         * @param attributes non-null raw attributes without null keys or values
+         * @param intentFilters non-null intent filters without null entries
          * @throws NullPointerException if kind, a collection, or a collection entry is null
          */
         public Component {
@@ -205,25 +229,46 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
             intentFilters = List.copyOf(intentFilters);
         }
 
-        /** @return the component's literal enabled flag, or null; no default or application value is inherited */
+        /**
+         * Reads this component's {@code android:enabled} as a literal boolean.
+         * @return the declared flag, or null when absent, unresolved, or invalid; no default or application value is inherited
+         */
         public Boolean declaredEnabled() { return bool(attributes, "android:enabled"); }
 
-        /** @return the component's literal permission, or null; application permission is not inherited */
+        /**
+         * Reads this component's literal {@code android:permission} string.
+         * @return the declared permission, or null when absent or unresolved; application permission is not inherited
+         */
         public String permission() { return string(attributes, "android:permission"); }
 
-        /** @return the literal process declaration, or null; relative process names remain unexpanded */
+        /**
+         * Reads this component's literal {@code android:process} string.
+         * @return the declaration, or null when absent or unresolved; relative process names remain unexpanded
+         */
         public String process() { return string(attributes, "android:process"); }
 
-        /** @return literal provider authorities, including semicolon separators, or null */
+        /**
+         * Reads the literal {@code android:authorities} string without splitting it.
+         * @return declared authorities, including semicolon separators, or null when absent or unresolved
+         */
         public String authorities() { return string(attributes, "android:authorities"); }
 
-        /** @return the provider's literal readPermission, or null; no permission fallback is applied */
+        /**
+         * Reads the literal {@code android:readPermission} string.
+         * @return the declared read permission, or null when absent or unresolved; no permission fallback is applied
+         */
         public String readPermission() { return string(attributes, "android:readPermission"); }
 
-        /** @return the provider's literal writePermission, or null; no permission fallback is applied */
+        /**
+         * Reads the literal {@code android:writePermission} string.
+         * @return the declared write permission, or null when absent or unresolved; no permission fallback is applied
+         */
         public String writePermission() { return string(attributes, "android:writePermission"); }
 
-        /** @return the provider's literal grantUriPermissions flag, or null; no platform default is inferred */
+        /**
+         * Reads {@code android:grantUriPermissions} as a literal boolean.
+         * @return the declared flag, or null when absent, unresolved, or invalid; no platform default is inferred
+         */
         public Boolean grantUriPermissions() { return bool(attributes, "android:grantUriPermissions"); }
     }
 
@@ -233,19 +278,23 @@ public record ApkInfo(String packageName, Long versionCode, String versionName,
      * remains a separate map, preserving scheme/host/path/MIME and other attribute combinations as declared.
      * No matching combinations or Android defaults are inferred.
      *
-     * @param actions immutable literal action names in declaration order
-     * @param categories immutable literal category names in declaration order
-     * @param data immutable raw attribute maps for direct data children, in declaration order
-     * @param attributes immutable filter attributes, including priority and autoVerify when declared
+     * @param actions non-null action names without null elements, copied in order to an immutable list
+     * @param categories non-null category names without null elements, copied in order to an immutable list
+     * @param data non-null raw maps for direct data children, copied in order to an immutable list
+     *             of immutable maps; null maps, keys, and values are not allowed
+     * @param attributes non-null raw filter attributes without null entries, copied to an immutable map;
+     *                   includes priority and autoVerify when declared
      */
     public record IntentFilter(List<String> actions, List<String> categories,
                                List<Map<String, AttributeValue>> data, Map<String, AttributeValue> attributes) {
         /**
          * Creates an intent-filter declaration, copying the lists, map, and nested data maps.
-         * @param actions literal action names without null entries
-         * @param categories literal category names without null entries
-         * @param data data-element maps without null entries
-         * @param attributes raw filter attributes without null entries
+         * List order and duplicates are retained; map iteration order is unspecified. Values
+         * are not checked for Android intent-filter validity. Inputs must remain stable during copying.
+         * @param actions non-null literal action names without null entries
+         * @param categories non-null literal category names without null entries
+         * @param data non-null data-element maps without null maps, keys, or values
+         * @param attributes non-null raw filter attributes without null keys or values
          * @throws NullPointerException if any collection, element, key, or value is null
          */
         public IntentFilter {

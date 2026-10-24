@@ -53,9 +53,19 @@ import java.util.function.Consumer;
  * original context to remain valid. Soot arguments are borrowed and must belong to that scene. Direct
  * insertion, application, and export operate on live state; they do not invalidate a facade's cached graph.
  * Submit mutations through the managed analysis's transformation API when graph rebuilding is needed.
- * <p>Generated probes call Android's debug logger through a shared helper that emits each message once
- * per process, regardless of tag. These messages describe coverage, not event counts or a complete trace.
+ * <p>Generated probes call Android's debug logger through a helper that deduplicates successfully recorded
+ * messages in its static set, regardless of tag; different app processes or class loaders have separate
+ * sets. These messages describe coverage, not event counts or a complete trace, and their contents are
+ * deduplicated across all logger instances that instrument the same helper.
  * Missing helper runtime signatures are resolved using the configured Soot classpath when a probe is inserted.
+ * <p>For an already open {@code AndroidAnalysis analysis}, registration and execution are separate:
+ * <pre>{@code
+ * Logger logger = new Logger(analysis.context());
+ * logger.setTargetPackage("com.example");
+ * logger.logAllMethods("coverage", true);
+ * analysis.apply(logger); // Mutates bodies and invalidates the managed graph cache.
+ * }</pre>
+ * This changes only the in-memory model. Export, APK signing, and execution are separate steps.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -96,7 +106,8 @@ public class Logger implements Transformation {
 
     /**
      * Creates a logger with explicitly configured class, method, and library policies.
-     * Options and their predicate instances are retained; construction does not mutate the scene.
+     * Options and their predicate instances are retained. Construction accesses the current Soot Scene
+     * singleton but does not add classes, alter bodies, or register packs.
      *
      * @param context valid context that will own this logger's lifetime and thread
      * @param options scope and library classification for this logger
@@ -123,10 +134,15 @@ public class Logger implements Transformation {
      * Its registration methods add named transforms to Soot's global {@code jtp} pack; {@link #instrument()}
      * runs all Soot packs. Reacquire after {@code G.reset()} to discard the previous logger's configuration.
      * Repeated registration of the same operation uses the same phase name and may be rejected by Soot.
+     * <p>The legacy transforms retain the creating-thread requirement. Soot's normal worker-backed body-pack
+     * execution invokes them on another thread and is rejected even with one configured worker; use an
+     * instance logger with managed {@code analysis.apply(logger)} for that workflow. Direct legacy insertion
+     * calls on the creating thread are unaffected by this limitation.
      *
      * @return the legacy logger bound to the current scene and its first calling thread
      * @throws IllegalStateException if called from another thread, or the helper collides with an existing
      *         application class or cannot resolve required runtime signatures
+     * @throws RuntimeException if the legacy library policy cannot be loaded or helper validation fails
      * @deprecated construct a logger with an {@link AnalysisContext} and apply transformations explicitly
      */
     @Deprecated
@@ -144,6 +160,7 @@ public class Logger implements Transformation {
      * At execution time, accepted classes must be in this exact package or a subpackage, in addition to
      * satisfying the configured predicates. For example, {@code com.example} excludes {@code com.exampleother}.
      * Changing this value also affects operations already registered but not yet executed.
+     * The value is used literally: whitespace and a trailing dot are not stripped or validated.
      *
      * @param targetPackage package name without a trailing dot; null or empty removes this restriction
      * @throws IllegalStateException if this logger's thread, scene, or context is no longer valid
@@ -165,6 +182,13 @@ public class Logger implements Transformation {
         steps.add(new BodyStep(includeLibraries, logic));
         if (context == null) {
             PackManager.v().getPack("jtp").add(new Transform(phaseName, new BodyTransformer() {
+                /**
+                 * Applies the legacy registration to an eligible body on the logger's owning thread.
+                 * @param b live body supplied by Soot
+                 * @param phaseName Soot phase name; the registration already captures its operation
+                 * @param options Soot phase options; not interpreted by this operation
+                 * @throws IllegalStateException if Soot dispatches on another thread or the scene is stale
+                 */
                 @Override
                 protected void internalTransform(Body b, String phaseName, Map<String, String> options) {
                     checkValid();
@@ -225,6 +249,9 @@ public class Logger implements Transformation {
      * each changed body is validated. Earlier mutations remain visible to later operations. Bodies of
      * rejected classes or methods are not loaded. This does not clear registrations or run global Soot packs.
      * Failures propagate without rolling back earlier mutations; repeated calls may insert duplicate probes.
+     * Scope predicates may be evaluated more than once for the same object, including during insertion,
+     * and should not mutate the scene. Direct application does not invalidate managed graph caches; prefer
+     * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis#apply(Transformation)}.
      *
      * @param context the same analysis context supplied to this logger's constructor
      * @throws NullPointerException if {@code context} is null
@@ -261,16 +288,20 @@ public class Logger implements Transformation {
      * The method is skipped if its class, method, or target-package scope rejects it. This low-level operation
      * does not apply the library classifier. A before-insertion uses the supplied chain's branch-redirection
      * behavior; use the body's {@link soot.UnitPatchingChain} so incoming branches target the new probe.
-     * Before insertion, a missing return is appended for {@code void} or {@code java.lang.Void} bodies.
+     * An after-insertion is reached only if control falls through the insertion point; placing it after a
+     * return, throw, or unconditional jump does not record that unit's execution. Before either insertion mode,
+     * a return is appended for {@code void} or {@code java.lang.Void} bodies only when the body contains no
+     * corresponding return instruction. This is not a general repair of invalid control flow.
      * Helper generation and body mutation are immediate and are not rolled back if validation fails.
      *
      * @param units nonempty unit chain belonging to {@code b}; normally {@code b.getUnits()}
      * @param insertionPoint existing unit in {@code units}, from this logger's current scene
      * @param tagToLog non-null Android debug-log tag
      * @param messageToLog non-null message, deduplicated at runtime independently of its tag
-     * @param b borrowed Jimple body to mutate and validate
+     * @param b non-null borrowed Jimple body to mutate and validate
      * @param after whether to insert after the unit; false inserts before it
      * @throws IllegalStateException if the logger is no longer valid or helper generation fails
+     * @throws NullPointerException if a required body, chain, or logging string is null when used
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
      * @throws RuntimeException if supplied Soot objects are inconsistent, a predicate fails, or validation fails
      */
@@ -364,12 +395,15 @@ public class Logger implements Transformation {
      * Null, non-concrete, or out-of-scope methods are ignored. Accepted concrete methods have their Jimple
      * bodies loaded and validated. This low-level operation applies class, method, and package scope but
      * does not exclude libraries through the library classifier.
+     * The body must be Jimple and have a non-identity insertion point. No return/throw completion or
+     * successful constructor initialization is implied by a method-entry coverage message.
      *
      * @param sm borrowed method from the current scene, or null for a no-op
      * @param tagToLog non-null Android debug-log tag used if a probe is inserted
      * @param messageToLog non-null message, deduplicated at runtime independently of its tag
      * @throws IllegalStateException if the logger is no longer valid or helper generation fails
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
+     * @throws ClassCastException if an accepted method's active body is not Jimple
      * @throws RuntimeException if a predicate, body load, insertion, or Soot validation fails
      */
     public void addLogToMethod(SootMethod sm, String tagToLog, String messageToLog) {
@@ -524,12 +558,15 @@ public class Logger implements Transformation {
     }
 
     /**
-     * Registers entry probes for selected Activity callbacks: both configured {@code onCreate} signatures,
+     * Registers entry probes for selected Activity callbacks: {@code onCreate(Bundle)} and
+     * {@code onCreate(Bundle, PersistableBundle)},
      * {@code onStart}, {@code onRestart}, {@code onStateNotSaved}, {@code onResume}, {@code onPause},
      * {@code onStop}, and {@code onDestroy}. Existing concrete declarations are instrumented; inherited
      * callbacks are not synthesized. Messages use {@code ACTIVITY=class-name|callback-subsignature},
      * recording callback coverage once per process rather than lifecycle order or event counts.
      * This appends an instance operation or registers the legacy {@code jtp.activitiesLogger} transform.
+     * Classification uses the declaring class's superclass chain, not manifest declarations; abstract base
+     * classes with selected concrete callbacks can be instrumented too.
      *
      * @param tagToLog non-null Android debug-log tag to embed when the operation runs
      * @param includeLibraries whether to bypass the configured library classifier; all scope predicates still apply
@@ -665,8 +702,12 @@ public class Logger implements Transformation {
      * operation order. A legacy {@link #v()} logger runs all configured Soot packs, including unrelated
      * transforms and Soot's usual pack ordering. Registrations remain installed; this is not idempotent.
      * Use the managed analysis's transformation API instead when its cached call graph must be invalidated.
+     * Soot's normal body-pack executor uses worker threads, which violate the legacy logger's creating-thread
+     * check and cause an exception when a registered transform is invoked. Setting one worker does not move
+     * execution back to the calling thread. Instance loggers execute their registrations synchronously.
      *
-     * @throws IllegalStateException if the logger is no longer valid or helper generation fails
+     * @throws IllegalStateException if the logger is no longer valid, helper generation fails, or a legacy
+     *         transform is invoked on a Soot worker thread
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
      * @throws RuntimeException if a transformation, Soot pack, or body validation fails
      */
@@ -685,6 +726,9 @@ public class Logger implements Transformation {
      * This does not apply pending logger operations. The output is an APK only when Soot's input and output
      * configuration requests one; the method performs no signing or installation. Output failures can leave
      * partially written files. Cancellation is checked before and after Soot's write operation.
+     * Soot may convert or release active bodies during output; set
+     * {@code Options.v().set_no_writeout_body_releasing(true)} beforehand if bodies must be retained,
+     * and do not assume previously borrowed body/unit references still describe the current representation.
      *
      * @throws IllegalStateException if this logger's thread, scene, or context is no longer valid
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
@@ -701,8 +745,10 @@ public class Logger implements Transformation {
      * The global format and directory remain changed afterward. This does not execute pending logging
      * operations, sign an APK, or install it. Soot determines whether the output is an APK container or DEX
      * files from the loaded input configuration. Cancellation is checked before and after the write.
+     * Output is subject to Soot's existing overwrite policy and may leave partial files on failure.
+     * Like {@link #exportNewApk()}, this may convert or release active bodies according to Soot options.
      *
-     * @param path output-directory path, not a destination APK filename
+     * @param path non-null output-directory path, not a destination APK filename
      * @throws IllegalStateException if this logger's thread, scene, or context is no longer valid
      * @throws java.util.concurrent.CancellationException if cancellation or interruption is observed
      * @throws RuntimeException if the path is invalid or Soot cannot convert or write the output

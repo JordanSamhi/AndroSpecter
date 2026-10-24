@@ -77,6 +77,9 @@ import java.util.function.Consumer;
  * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis} for a managed lifecycle.
  * <p>
  * Apart from {@link #abortAnalysis()}, operations must not run concurrently on this instance.
+ * Use one owning thread for initialization and subsequent backend access. None of these operations
+ * acquires the managed facade's exclusive-session lease, so separate helper instances cannot safely
+ * analyze different APKs concurrently in the same JVM.
  * Returned {@link SetupApplication} objects are live backend objects, whereas
  * {@link TaintAnalysisResult} values and legacy report strings are detached and remain
  * usable after Soot is reset.
@@ -109,7 +112,7 @@ public class FlowdroidUtils {
      * This is equivalent to the customizer overload with a no-op customizer; see that overload
      * for lifecycle and cancellation details.
      *
-     * @param platformPath non-null Android SDK platforms directory
+     * @param platformPath non-null Android SDK platforms directory or a specific {@code android.jar}
      * @param config Soot-options callback, or null to use this library's {@link SootConfig}
      * @param callGraphAlgo {@code CHA}, {@code RTA}, {@code VTA}, or {@code SPARK}, ignoring
      *                      surrounding whitespace and case; null selects {@code CHA}
@@ -131,6 +134,11 @@ public class FlowdroidUtils {
      * so it may override them or configure callback, data-flow, and path-reconstruction limits.
      * For example, {@code configuration -> configuration.setDataFlowTimeout(60)} sets the
      * backend data-flow timeout in seconds.
+     * <p>The customizer receives the actual configuration retained by the backend, not a defensive copy.
+     * Do not mutate a retained configuration while analysis is running. This low-level callback is not
+     * subject to the managed builder's protected-setting checks; resetting Soot or changing global
+     * FlowDroid settings in it is the caller's responsibility. The separate {@code config} callback runs
+     * during Soot setup and can override Soot options; it is not the Android configuration customizer.
      * <p>
      * Every initialization attempt discards this helper's previous initialization and clears
      * its cancellation request. Once construction succeeds, subsequent taint runs reuse the
@@ -138,8 +146,10 @@ public class FlowdroidUtils {
      * restore the previous scene. The caller must prevent other Soot users from resetting or
      * mutating the scene until its operations finish. Cancellation is checked before and after
      * call graph construction; it does not guarantee immediate backend termination.
+     * The returned configuration's integration mode is set to {@code UseExistingInstance} after success.
+     * Reinitialization is destructive; initialization does not close or restore a previous analysis.
      *
-     * @param platformPath non-null Android SDK platforms directory
+     * @param platformPath non-null Android SDK platforms directory or a specific {@code android.jar}
      * @param config Soot-options callback, or null to use this library's {@link SootConfig}
      * @param callGraphAlgo {@code CHA}, {@code RTA}, {@code VTA}, or {@code SPARK}, ignoring
      *                      surrounding whitespace and case; null selects {@code CHA}
@@ -158,10 +168,15 @@ public class FlowdroidUtils {
     /**
      * Initializes either an eager Android analysis or a class-only scene for later promotion.
      * Class-only initialization loads APK classes with the configured Android/additional classpath,
-     * prepares Jimple and patches framework models, but does not discover callbacks or build a graph.
+     * runs Soot's {@code wjpp} preparation pack and patches framework models, but does not discover
+     * callbacks or build a graph. It does not eagerly retrieve every application method body; later
+     * inspection or analysis may still trigger body loading.
      * The returned backend uses the existing scene when constructing a graph or running taint later,
      * preserving bodies modified in the meantime. This method otherwise shares the customizer
      * overload's defaults, ownership, and cancellation contracts.
+     * Class-only customization must retain {@code CreateNewInstance} until loading finishes;
+     * this method then switches the backend to {@code UseExistingInstance}. A null mode is rejected
+     * before changing this helper's existing initialization state.
      *
      * @param platformPath non-null Android platforms directory or platform JAR
      * @param config Soot-options callback, or null for this library's defaults
@@ -306,9 +321,11 @@ public class FlowdroidUtils {
      * {@link #runTaintAnalysisResult(Set, Set)} to inspect their partial findings and diagnostics.
      * The caller must preserve exclusive ownership of the initialized Soot scene and must
      * not mutate the source/sink descriptors during execution.
+     * Analysis can construct or replace call graphs and mutate live method bodies; previously captured
+     * Soot graph/body references must not be treated as an unchanged model after the call.
      *
-     * @param sources non-null set of source method descriptors; may be empty
-     * @param sinks non-null set of sink method descriptors; may be empty
+     * @param sources non-null set of non-null source method descriptors; may be empty
+     * @param sinks non-null set of non-null sink method descriptors; may be empty
      * @return mutable independent set of detached report strings, with identical reports
      *         deduplicated; empty only for a successful analysis with no findings
      * @throws NullPointerException if {@code sources} or {@code sinks} is null
@@ -336,8 +353,8 @@ public class FlowdroidUtils {
      * Check the returned status before interpreting an empty finding list. This overload has
      * the same lifecycle, partial-result, and cancellation behavior as the identifier overload.
      *
-     * @param sources non-null set of source method descriptors; may be empty
-     * @param sinks non-null set of sink method descriptors; may be empty
+     * @param sources non-null set of non-null source method descriptors; may be empty
+     * @param sinks non-null set of non-null sink method descriptors; may be empty
      * @return non-null immutable result with a newly generated analysis identifier
      * @throws NullPointerException if {@code sources} or {@code sinks} is null
      * @throws IllegalStateException if this helper has not been successfully initialized
@@ -352,6 +369,8 @@ public class FlowdroidUtils {
      * Source/sink descriptors are passed to FlowDroid without copying; do not mutate them during
      * the call. The caller must preserve exclusive ownership of the initialized Soot scene until
      * result detachment finishes. This low-level API does not detect an external Soot reset.
+     * Running FlowDroid can rebuild the call graph and rewrite bodies in that scene. Detach any earlier
+     * results needed for comparison before execution; this helper does not invalidate facade caches.
      * <p>
      * Findings returned by the backend are retained for failed, timed-out, or cancelled runs
      * when they can be detached. A backend exception before a result is returned yields no
@@ -366,8 +385,8 @@ public class FlowdroidUtils {
      * are not converted to result statuses. Only a successful status with no findings denotes
      * a completed empty analysis; success does not guarantee analysis soundness.
      *
-     * @param sources non-null set of source method descriptors; may be empty
-     * @param sinks non-null set of sink method descriptors; may be empty
+     * @param sources non-null set of non-null source method descriptors; may be empty
+     * @param sinks non-null set of non-null sink method descriptors; may be empty
      * @param analysisId non-null identifier to copy into the result; uniqueness is caller-managed
      * @return non-null immutable detached result with completion status, findings, and diagnostics
      * @throws NullPointerException if a set or {@code analysisId} is null
@@ -524,8 +543,12 @@ public class FlowdroidUtils {
      * Reads the manifest package name lazily, independently of FlowDroid initialization.
      * The first result, including a failed read returning null, is cached for this helper's
      * lifetime. Read failures are logged as warnings and are not retried by later calls.
+     * Reinitializing analysis or replacing the APK file does not invalidate this cache. The manifest
+     * reader is closed before return. FlowDroid's binary-XML parser can consult Soot to resolve unnamed
+     * attributes; use {@link com.jordansamhi.androspecter.metadata.ApkInfo#read(java.nio.file.Path)}
+     * when metadata reading must leave Soot untouched.
      *
-     * @return manifest package name, or null if it is unavailable or the manifest could not be processed
+     * @return detached manifest package name, or null if it is unavailable or the manifest could not be processed
      */
     public String getPackageName() {
         if (!manifestRead) {

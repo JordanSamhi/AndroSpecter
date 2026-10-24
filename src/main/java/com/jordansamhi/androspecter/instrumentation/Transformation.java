@@ -5,7 +5,9 @@ import com.jordansamhi.androspecter.analysis.AnalysisContext;
 /**
  * One explicit transformation of the current analysis's live Soot scene.
  * Implementations must not reset Soot, close the supplied context, or use its objects on another thread.
- * For managed analyses, submit transformations through the analysis facade so cached graphs are invalidated.
+ * For managed analyses, submit transformations through
+ * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis#apply(Transformation)} so cached graphs are invalidated.
+ * A context validates scene lifetime and cancellation; it does not acquire exclusive Soot ownership on its own.
  */
 @FunctionalInterface
 public interface Transformation {

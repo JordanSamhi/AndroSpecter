@@ -12,8 +12,10 @@ import java.util.List;
  * Prefer {@link #v()} so repeated callers share the generator's helper identity. The implicit no-argument
  * constructor creates an independent generator; it does not generate a helper, and later generation can
  * conflict with a helper owned by a different generator.
- * <p>The generated helper emits each message at most once per process, regardless of tag, through
- * {@code android.util.Log.d}. Its public static {@code log}, {@code addLog}, and {@code alreadyLogged}
+ * <p>The generated helper deduplicates messages through its static set, regardless of tag, and emits them
+ * through {@code android.util.Log.d}. Each runtime class-loader copy and each app process has a separate set;
+ * all probes using the same copy share it. Successful sink calls are recorded afterward, so a failed set
+ * update can permit a retry to emit again. Its public static {@code log}, {@code addLog}, and {@code alreadyLogged}
  * methods use explicit monitors on a shared set, preserving synchronization in JVM and DEX output.
  * The check, sink call, and set update in {@code log} are atomic with respect to these helper methods.
  * A sink failure releases the lock and propagates; the failed message is not marked as logged.
@@ -45,7 +47,9 @@ public class LogCheckerClass {
      * {@code G.reset()}. A non-phantom class with the same name owned by another generator or application
      * is rejected. Required Object, String, Set, HashSet, Log, and Throwable signatures are resolved from
      * the configured Soot classpath before helper creation; already sufficient signatures are reused.
-     * Generated method bodies are validated. Failures during generation can leave partial scene mutations.
+     * Configure an Android-compatible classpath before calling this method; it does not initialize an APK.
+     * Newly generated method bodies are validated. An existing owned helper with its {@code log} method
+     * present is reused without revalidating its other members. Failures can leave partial scene mutations.
      *
      * @throws IllegalStateException if the helper name collides or a required runtime class or method
      *         signature cannot be resolved from the configured classpath

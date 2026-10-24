@@ -26,7 +26,13 @@ import java.util.UUID;
  * Version 1 has required {@code schemaVersion}, {@code analysisId}, {@code methods}, and
  * {@code edges} fields. Every edge requires {@code source}, {@code target}, {@code kind},
  * {@code callSite}, and {@code callSiteIndex}; only callSite may be null. Unknown extra
- * fields are ignored. Imports preserve isolated nodes and parallel edges and rebuild indexes.
+ * fields are ignored. Imports preserve isolated nodes and parallel edges and rebuild indexes,
+ * normalizing nodes and edges to {@link CallGraphSnapshot}'s deterministic order.
+ * This utility does not access Soot. Exported JSON includes the caller-supplied analysis UUID,
+ * but not APK identity, algorithm, configuration, or a completion status.
+ *
+ * <p>JSON output is intended for a JSON document, not direct embedding in an HTML script
+ * element. Use {@link GraphHtml} for an HTML-safe interactive document.</p>
  */
 public final class GraphJson {
     /** The schema version emitted and accepted by this implementation. */
@@ -57,6 +63,7 @@ public final class GraphJson {
      * Output contains an explicit node array so isolated nodes survive a round trip. An
      * I/O failure can leave partial output; callers needing atomic files should write to
      * a temporary file and publish it after successful completion.
+     * The writer determines the file encoding; UTF-8 is recommended for interchange.
      *
      * @param graph non-null detached graph
      * @param destination non-null caller-owned character writer
@@ -97,6 +104,10 @@ public final class GraphJson {
      * unknown extra fields are ignored. Required fields, their types, the UUID, version,
      * edge positions, and endpoint membership are validated. Input must contain one strict
      * JSON document: comments, unquoted names, and trailing documents are rejected.
+     * Required numeric fields must have exact 32-bit integral values; equivalent JSON
+     * forms such as {@code 1}, {@code 1.0}, and {@code 1e0} are accepted. UUID text must
+     * use the full hyphenated form, with either case accepted. Strings are not validated
+     * as Jimple signatures or Soot kinds. Every edge endpoint must occur in {@code methods}.
      *
      * @param json non-null complete JSON document
      * @return immutable graph with rebuilt indexes and the original analysis identity
@@ -117,7 +128,9 @@ public final class GraphJson {
      * Reads one complete graph document and validates it as described by {@link #fromJson(String)}.
      * Reads to the end of the supplied stream to reject trailing documents. This method
      * does not close the caller's reader. Duplicate method entries are normalized to one
-     * node; equal edge occurrences remain separate and are never deduplicated.
+     * node; equal edge occurrences remain separate and are never deduplicated. Input order
+     * is replaced by snapshot order. Unknown extension fields are still required to contain
+     * valid JSON, although their values are not retained or written back on export.
      *
      * @param source non-null caller-owned character reader
      * @return immutable graph retaining isolated nodes, parallel edges, and analysis identity

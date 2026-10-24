@@ -11,6 +11,8 @@ import java.util.Objects;
  * methods, and every parallel edge is emitted separately. Use {@link GraphJson} for
  * versioned, lossless interchange; DOT is a visualization format and has no importer here.
  * NUL characters are rejected because Graphviz cannot represent them in quoted DOT strings.
+ * Export only writes text: rendering that text requires a separate Graphviz installation.
+ * No Soot state is accessed and the snapshot is not modified.
  */
 public final class GraphDot {
     private GraphDot() {}

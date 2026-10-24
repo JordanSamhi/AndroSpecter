@@ -12,6 +12,9 @@ import java.util.function.Predicate;
  * Instances compose as predicates; {@code true} means the class is a library. Classes passed to a filter are
  * borrowed Soot objects and must only be used within their owning analysis's thread and lifetime.
  * Implementations should avoid scene mutation; exceptions propagate to the inspection or transformation.
+ * Composition retains the original filter instances and their captured state. It does not
+ * make mutable predicates thread-safe or freeze a changing classification policy. Null class
+ * arguments are outside this interface's contract; implementations need not handle them uniformly.
  */
 @FunctionalInterface
 public interface LibraryFilter extends Predicate<SootClass> {
@@ -26,7 +29,7 @@ public interface LibraryFilter extends Predicate<SootClass> {
     /**
      * Adapts {@link #isLibrary(SootClass)} to the standard predicate interface.
      *
-     * @param clazz borrowed class to classify
+     * @param clazz non-null borrowed class to classify
      * @return the result of {@link #isLibrary(SootClass)}
      */
     @Override
@@ -96,7 +99,9 @@ public interface LibraryFilter extends Predicate<SootClass> {
     /**
      * Matches any listed package or its subpackages using package boundaries.
      * For example, {@code com.example} matches {@code com.example.util} but not {@code com.exampleother}.
-     * The array is copied; an empty array matches no classes.
+     * The array is copied; an empty array matches no classes. Names are matched exactly
+     * as supplied: whitespace is not trimmed and Java package-name syntax is not validated
+     * beyond the checks described below. The class's package is read when the filter is evaluated.
      *
      * @param packageNames nonblank package names without a trailing dot
      * @return a filter matching the union of the listed packages and subpackages
@@ -117,6 +122,7 @@ public interface LibraryFilter extends Predicate<SootClass> {
     /**
      * Adapts the legacy {@link LibrariesManager} classification, including its current configured package list.
      * The manager is consulted when the filter is evaluated; its list is not snapshotted.
+     * Thus later changes to the legacy manager can change the filter's answer.
      * New inspections and instance loggers do not enable this policy implicitly.
      *
      * @return a filter delegating to the legacy library manager

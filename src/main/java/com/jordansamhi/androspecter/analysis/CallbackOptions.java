@@ -4,14 +4,18 @@ import java.util.Objects;
 
 /**
  * Immutable common callback-discovery settings, independent of a live backend configuration.
- * Callback timeout is configured separately on {@link AndroidAnalysis.Builder#callbackTimeout}.
+ * Callback timeout is configured separately on {@link AndroidAnalysis.Builder#callbackTimeout(java.time.Duration)}.
  * Disabling discovery or limiting it can remove callback behavior from the resulting model.
+ * The settings may be shared across sessions and threads and survive Soot reset. In pinned
+ * FlowDroid 2.15.1, callback-count/depth limits and the callback timeout apply to
+ * {@link Analyzer#DEFAULT}; {@link Analyzer#FAST} does not apply those limits. Selecting
+ * FAST or disabling discovery retains these values but does not enforce them.
  *
  * @param enabled whether FlowDroid should discover Android callbacks
  * @param analyzer non-null callback discovery strategy
- * @param maxCallbacksPerComponent nonnegative limit; zero disables the limit; exceeding a positive
- *                                 limit makes FlowDroid omit that component's callbacks
- * @param maxAnalysisDepth callback-registration depth; -1 or zero means unlimited, positive values limit depth
+ * @param maxCallbacksPerComponent nonnegative DEFAULT-analyzer limit; zero disables it; exceeding
+ *                                 a positive limit omits that component's callbacks rather than truncating them
+ * @param maxAnalysisDepth DEFAULT-analyzer callback-discovery iteration limit; -1 or zero means unlimited
  */
 public record CallbackOptions(boolean enabled, Analyzer analyzer,
                               int maxCallbacksPerComponent, int maxAnalysisDepth) {
@@ -20,8 +24,8 @@ public record CallbackOptions(boolean enabled, Analyzer analyzer,
      *
      * @param enabled whether callback discovery is enabled
      * @param analyzer non-null discovery strategy
-     * @param maxCallbacksPerComponent nonnegative per-component limit, or zero for no limit
-     * @param maxAnalysisDepth positive depth limit, or -1/zero for no limit
+     * @param maxCallbacksPerComponent nonnegative DEFAULT-analyzer per-component limit, or zero for no limit
+     * @param maxAnalysisDepth positive DEFAULT-analyzer iteration limit, or -1/zero for no limit
      * @throws NullPointerException if {@code analyzer} is null
      * @throws IllegalArgumentException if the callback limit is negative or depth is less than -1
      */
@@ -34,7 +38,8 @@ public record CallbackOptions(boolean enabled, Analyzer analyzer,
 
     /**
      * Returns the callback defaults of the supported FlowDroid version: enabled, default analyzer,
-     * at most 100 callbacks per component, and unlimited callback-registration depth.
+     * a per-component callback limit of 100, and unlimited callback-discovery depth.
+     * Components exceeding that limit can have all their callbacks omitted.
      *
      * @return immutable default callback settings
      */
@@ -46,7 +51,10 @@ public record CallbackOptions(boolean enabled, Analyzer analyzer,
     public enum Analyzer {
         /** FlowDroid's default iterative callback discovery. */
         DEFAULT,
-        /** FlowDroid's fast callback discovery, with different precision/runtime tradeoffs. */
+        /**
+         * FlowDroid's fast discovery, which also scans unreachable methods and does not
+         * enforce the DEFAULT analyzer's callback-count/depth limits or timeout.
+         */
         FAST
     }
 }

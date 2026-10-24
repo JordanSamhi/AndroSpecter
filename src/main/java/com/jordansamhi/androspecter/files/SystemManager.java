@@ -29,8 +29,9 @@ import soot.SootClass;
  */
 
 /**
- * Manages system classes by checking for system class membership of given Soot classes.
- * Loads the list of system classes from a configuration file at startup.
+ * Legacy classifier based on system-package prefixes from the bundled classpath resource.
+ * This is a name-based heuristic, independent of Soot's application/library flag.
+ * Singleton initialization is not synchronized; use it on the thread owning the Soot scene.
  *
  * @author Jordan Samhi
  */
@@ -63,10 +64,13 @@ public class SystemManager extends FileLoader {
 
 
     /**
-     * Checks whether the given SootClass is a system class.
+     * Checks a class name against the bundled prefixes, requiring a dot after each prefix.
+     * Matching is case-sensitive; no superclass traversal or origin verification is performed.
+     * The class is borrowed only for this call and is not cached.
      *
-     * @param sc the SootClass to check for system class membership
-     * @return true if the SootClass is a system class, false otherwise
+     * @param sc non-null class from the caller's current Soot scene
+     * @return true if a bundled system-package prefix matches its name
+     * @throws NullPointerException if {@code sc} is null
      */
     public boolean isSystemClass(SootClass sc) {
         for (String s : this.items) {

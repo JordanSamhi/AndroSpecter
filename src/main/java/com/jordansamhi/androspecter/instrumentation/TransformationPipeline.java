@@ -32,6 +32,8 @@ public final class TransformationPipeline implements Transformation {
      * An empty pipeline only validates the context. A failed or cancelled stage prevents subsequent stages
      * from running; changes already made are not rolled back. This method does not close the context.
      * Calling it again runs all stages again; idempotence depends on the individual stages.
+     * Direct application does not notify a managed analysis's graph cache. Submit the pipeline to
+     * {@link com.jordansamhi.androspecter.analysis.AndroidAnalysis#apply(Transformation)} when using that facade.
      *
      * @param context valid context for the current scene
      * @throws NullPointerException if {@code context} is null

@@ -9,7 +9,7 @@ publishing. The current `1.2.0-SNAPSHOT` version remains a development version.
 
 Use JDK 17 or later and Maven 3.6.3 or later in the Maven 3 series.
 Maven 4 is not supported by this publishing plugin.
-Before preparing a release, run the tests, generate the strict public Javadoc, and
+Before preparing a release, run the tests, generate strict public/protected API Javadoc, and
 build the independently maintained examples:
 
 ```sh

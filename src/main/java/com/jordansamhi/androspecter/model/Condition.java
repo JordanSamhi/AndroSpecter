@@ -17,19 +17,14 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The Condition class encapsulates information and operations related to a conditional statement (IfStmt) within a method.
- * It provides functionalities to analyze and process the branches, statements dominated by the condition,
- * and the control flow graph surrounding the condition.
- * <p>
- * The class holds references to the SootMethod and Body containing the condition, the InfoflowCFG representing the control
- * flow graph, and the BriefUnitGraph for analyzing the control flow within the method.
- * <p>
- * It also maintains collections to keep track of the statements dominated by the condition,
- * and the units comprising the first, second, and both branches of the condition.
- * <p>
- * The class provides methods to initialize and process the condition, generate the control flow graph,
- * identify the branches and the statements dominated by the condition, and access or modify the associated
- * SootMethod, Body, InfoflowCFG, BriefUnitGraph, and the collections of units and statements related to the condition.
+ * Computes branch-specific units for one Jimple {@link IfStmt} at construction time.
+ * Uses a {@link BriefUnitGraph}, which omits exceptional edges, and considers only
+ * units dominated by the condition. Units reachable through both successors are
+ * removed from both sets. This is a structural approximation, not path-feasibility analysis.
+ * <p>The method, body, entry points, and returned units are borrowed Soot objects.
+ * Use them only while the original scene and body remain valid. Results are not
+ * refreshed after body edits and do not become detached snapshots after a Soot reset.
+ * Returned branch sets are live and mutable; instances are not thread-safe.
  */
 public class Condition {
 
@@ -94,12 +89,13 @@ public class Condition {
     }
 
     /**
-     * Public constructor creates a Condition object and initializes it with the given IfStmt and SootMethod objects.
+     * Loads the concrete method's body and computes the condition's branch sets.
+     * This does not mutate the body. Recreate the object after changing the body.
      *
      * @param i      The IfStmt object representing the condition.
      * @param method The SootMethod object containing the condition.
-     * @throws IllegalArgumentException if the condition is null, the method has no concrete body,
-     *                                  or the condition is not in that body
+     * @throws IllegalArgumentException if either argument is null, the method is not concrete,
+     *         its body cannot be loaded, or the condition is not in that body
      */
     public Condition(IfStmt i, SootMethod method) {
         this();
@@ -313,9 +309,10 @@ public class Condition {
     }
 
     /**
-     * Gets the value of the hasTwoBranches field.
+     * Reports whether both successor traversals retained nonempty, distinct branch sets
+     * when this object was constructed. Merely having two CFG successors is not enough.
      *
-     * @return true if the condition has two branches, false otherwise.
+     * @return true if both computed branch sets were nonempty after removing shared units
      */
     public boolean hasTwoBranches() {
         return hasTwoBranches;
@@ -324,7 +321,7 @@ public class Condition {
     /**
      * Retrieves the entry point of the true branch of the condition.
      *
-     * @return A Unit representing the entry point of the true branch.
+     * @return borrowed true-branch entry unit, or null when no true entry was identified
      */
     public Unit getEntryPointTrueBranch() {
         return entryPointTrueBranch;
@@ -333,25 +330,27 @@ public class Condition {
     /**
      * Retrieves the entry point of the false branch of the condition.
      *
-     * @return A Unit representing the entry point of the false branch.
+     * @return borrowed false-branch entry unit, or null when no false entry was identified
      */
     public Unit getEntryPointFalseBranch() {
         return entryPointFalseBranch;
     }
 
     /**
-     * Retrieves the set of units representing the true branch of the condition.
+     * Returns the live true-branch set. Mutating it changes this object's stored set,
+     * without recomputing entry points or {@link #hasTwoBranches()}.
      *
-     * @return A set of units comprising the true branch.
+     * @return unordered mutable set of borrowed units; may be empty or null when absent
      */
     public Set<Unit> getTrueBranch() {
         return trueBranch;
     }
 
     /**
-     * Retrieves the set of units representing the false branch of the condition.
+     * Returns the live false-branch set. Mutating it changes this object's stored set,
+     * without recomputing entry points or {@link #hasTwoBranches()}.
      *
-     * @return A set of units comprising the false branch.
+     * @return unordered mutable set of borrowed units; may be empty or null when absent
      */
     public Set<Unit> getFalseBranch() {
         return falseBranch;

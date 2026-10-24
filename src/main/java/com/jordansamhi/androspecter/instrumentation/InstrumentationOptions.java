@@ -13,6 +13,9 @@ import java.util.function.Predicate;
  * A logger operation's {@code includeLibraries=false} additionally excludes its configured library policy;
  * {@code true} never widens the class or method scope. Predicates receive borrowed Soot objects during use.
  * The options retain predicate instances, so any captured mutable state remains the caller's responsibility.
+ * Predicates run on the logger's owning thread and may be evaluated repeatedly for the same class or method;
+ * use side-effect-free predicates and do not retain borrowed Soot arguments after the analysis ends.
+ * The options object itself can be reused across scenes if its predicates do not capture scene-bound objects.
  */
 public final class InstrumentationOptions {
     private final Predicate<SootClass> classes;
@@ -35,21 +38,21 @@ public final class InstrumentationOptions {
     /**
      * Returns the class-scope predicate retained by these options.
      *
-     * @return the configured class predicate; it is not a copy
+     * @return non-null configured class predicate; it is not a copy or a snapshot of selected classes
      */
     public Predicate<SootClass> classFilter() { return classes; }
 
     /**
      * Returns the method predicate applied within accepted classes.
      *
-     * @return the configured method predicate; it is not a copy
+     * @return non-null configured method predicate; it is not a copy or a snapshot of selected methods
      */
     public Predicate<SootMethod> methodFilter() { return methods; }
 
     /**
      * Returns the policy used by operations that exclude libraries.
      *
-     * @return the configured library classifier; it is not a copy
+     * @return non-null configured library classifier; it is not a copy
      */
     public LibraryFilter libraryFilter() { return libraries; }
 

@@ -16,14 +16,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>
  * The AndroidAppProcessor works by fetching Android application's SHA256 from a Redis instance,
  * downloading the corresponding APK file using AndroZoo service, processing the APK file as per
- * the logic defined in the abstract method {@link #processApp(String)}, and then removing the APK file.
+ * the logic defined in {@link #processApp(String)}, and then attempting to remove the APK file.
  * <p>
  * The main method is {@link #run()} which continuously checks for new SHA256 from Redis, and starts the
  * process for each new SHA256 found. If no new SHA256 is found, it waits for 30 seconds before checking again.
  * <p>
  * Specific processing logic needs to be provided by subclasses by implementing the abstract method {@link #processApp(String)}.
  * <p>
- * This class can be used as the base for creating Android application analysis, testing or data extraction frameworks.
+ * Each processor must have a single polling caller. {@link #processApp(String)} runs
+ * on a worker thread, whereas {@link #processResults()} runs on the polling thread
+ * after the worker completes. Transfer detached results between them; live managed
+ * Soot sessions must be opened, used, and closed on their owning worker thread.
  *
  * @author <a href="https://jordansamhi.com">Jordan Samhi</a>
  */
@@ -35,7 +38,7 @@ public abstract class AndroidAppsProcessor {
     private final String redisRoot;
 
     /**
-     * The maximum time that processApp may run, and the grace period for cancellation.
+     * The wait limit for processApp, and the grace period for cooperative cancellation.
      */
     private final long timeoutMillis;
     private final long terminationWaitMillis;
@@ -57,12 +60,15 @@ public abstract class AndroidAppsProcessor {
      * The RedisManager is used to interact with the Redis database, retrieving the SHA-256 hashes of the Android apps.
      * The AndroZooUtils instance is used to download the APK file corresponding to the given SHA-256 hash.
      * The redisRoot is a key that is used in Redis to store and retrieve information related to the processing of Android apps.
-     * The timeout parameter specifies the maximum number of minutes that the processApp method is allowed to run for each Android app.
+     * The timeout specifies how long to wait for processApp before requesting interruption;
+     * a callback that ignores interruption may continue beyond this deadline.
      *
      * @param rm        the RedisManager used to interact with the Redis database.
      * @param au        the AndroZooUtils instance used to download the APK files.
      * @param redisRoot the root key used in Redis to store and retrieve information related to the processing of Android apps.
-     * @param timeout   the maximum number of minutes that the processApp method is allowed to run for each Android app.
+     * @param timeout positive wait limit in minutes before requesting cancellation of processApp
+     * @throws NullPointerException if {@code rm}, {@code au}, or {@code redisRoot} is null
+     * @throws IllegalArgumentException if {@code timeout} is not positive
      */
 
     public AndroidAppsProcessor(RedisManager rm, AndroZooUtils au, String redisRoot, int timeout) {
@@ -88,9 +94,13 @@ public abstract class AndroidAppsProcessor {
      * It defines the specific operations that should be performed on each Android application.
      * The operations could include analysis, data extraction, testing, etc.
      * <p>
-     * The Android application is specified by its name, which is expected to be the path to the APK file.
+     * Runs on a dedicated worker thread. Observe interruption cooperatively and close
+     * any analysis session on this thread before returning. Store detached data for
+     * {@link #processResults()}; this callback does not run on the Redis polling thread.
+     * A thrown exception marks this APK as failed and skips {@code processResults()}.
+     * File deletion is attempted after processing, or after a cancelled worker eventually exits.
      *
-     * @param appName the path to the Android application's APK file.
+     * @param appName path to a readable nonempty downloaded or cached APK; do not retain it for later use
      */
 
     protected abstract void processApp(String appName);
@@ -98,8 +108,10 @@ public abstract class AndroidAppsProcessor {
     /**
      * Processes the results of the processApp method.
      * <p>
-     * This method is expected to be implemented in any subclass of AndroidAppProcessor.
-     * It defines the specific operations that should be performed on the results obtained from the processApp method.
+     * Called on the polling thread only after {@link #processApp(String)} completes
+     * successfully. This callback is outside the per-APK timeout. Read detached results
+     * published by the worker; do not use a managed Soot session owned by that worker.
+     * Throwing an exception marks the APK as failed instead of recording success.
      */
     protected abstract void processResults();
 
@@ -109,16 +121,24 @@ public abstract class AndroidAppsProcessor {
      * <p>
      * This method retrieves the SHA256 of an Android app from a Redis manager,
      * downloads the APK file using the AndroZoo manager, processes the app by invoking
-     * the processApp method (which is to be implemented in a subclass), and finally deletes the APK file.
+     * the processApp method (which is to be implemented in a subclass), and finally attempts to delete the APK file.
      * <p>
      * The process runs in an infinite loop, making the method ideal for use in a background service.
      * If the Redis manager does not provide a SHA256, the method waits for 30 seconds before trying again.
      * <p>
      * The processing of each app is performed in its own thread, with a timeout. If the processing
-     * takes longer than the timeout, it is cancelled. If any other exception occurs during the processing,
+     * takes longer than the timeout, interruption is requested. If any other exception occurs during the processing,
      * it is logged and the process continues with the next app. If cancellation does not stop
      * an analysis within five seconds, this worker stops polling to avoid overlapping analyses.
      * The caller retains ownership of the Redis manager and should close it when finished.
+     * <p>The configured timeout covers only {@code processApp}, not downloading or
+     * {@code processResults}. A cancelled callback may continue on its daemon thread;
+     * return from this method does not guarantee that callback has stopped. Cleanup attempts
+     * to delete files returned by the downloader, including cached APKs, once processing
+     * terminates; deletion failures are logged.
+     * Queue entries are removed when fetched; errors are recorded in the Redis error set
+     * but are not automatically requeued. Failures escaping the per-APK handler, such as
+     * polling or error-recording failures, are logged and end this run.
      */
     public void run() {
         String redisSpop = String.format("%s:pop", this.redisRoot);

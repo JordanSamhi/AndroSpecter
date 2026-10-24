@@ -51,9 +51,11 @@ public class TmpFolder {
     }
 
     /**
-     * Gets the default temporary directory for the current system.
+     * Reads the current {@code java.io.tmpdir} system property. The result is not
+     * cached, and the directory is neither created nor checked for existence or writability.
      *
-     * @return the path to the default temporary directory for the current system
+     * @return configured temporary-directory path, or null if the property was removed
+     * @throws SecurityException if a security manager denies access to the property
      */
     public String get() {
         return System.getProperty("java.io.tmpdir");

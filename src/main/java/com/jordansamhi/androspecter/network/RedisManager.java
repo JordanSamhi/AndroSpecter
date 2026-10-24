@@ -33,8 +33,14 @@ import java.util.Set;
  */
 
 /**
- * RedisManager is a utility class for sending values to a Redis server. It connects to a specified Redis server using the
- * given connection parameters, and can send a value to a specified list in the server.
+ * Synchronous Redis operations over one owned Jedis connection. Instances are not
+ * thread-safe; use one manager per worker and close it when finished. Connection,
+ * authentication, and Redis command errors propagate as Jedis runtime exceptions.
+ * Keys and values must be non-null unless a method explicitly states otherwise.
+ * <p>List-push and set-add methods select database 0 before executing; other methods
+ * use the connection's currently selected database. The public constructor starts
+ * in database 0. String/binary overloads share UTF-8-encoded keys; string getters
+ * decode returned values as UTF-8 and should not be used to recover arbitrary bytes.
  *
  * @author Jordan Samhi
  */
@@ -48,6 +54,8 @@ public class RedisManager implements AutoCloseable {
      * @param server the server name or IP address of the Redis server; must not be null
      * @param port   the port number on which the Redis server is listening; must not be null
      * @param auth   the authentication password for the Redis server; may be null or empty if authentication is not required
+     * @throws IllegalArgumentException if server or port is null, or the constructed Redis URI is invalid
+     * @throws redis.clients.jedis.exceptions.JedisException if connection or authentication fails
      */
     public RedisManager(String server, String port, String auth) {
         if (server == null || port == null) {
@@ -65,19 +73,29 @@ public class RedisManager implements AutoCloseable {
         }
     }
 
-    /** Creates a manager around an existing connection, which this manager owns. */
+    /**
+     * Wraps an existing client without connecting or authenticating it. This manager
+     * takes ownership and closes it through {@link #close()}; do not concurrently use
+     * or independently close the supplied client.
+     *
+     * @param jedis non-null client whose lifecycle is transferred to this manager
+     * @throws NullPointerException if {@code jedis} is null
+     */
     protected RedisManager(Jedis jedis) {
         this.jedis = Objects.requireNonNull(jedis, "jedis");
     }
 
-    /** Releases the Redis connection. The caller owns this manager's lifecycle. */
+    /**
+     * Releases the owned Redis connection. The caller owns this manager's lifecycle
+     * and should stop using it after closing; this wrapper does not maintain a closed-state guard.
+     */
     @Override
     public void close() {
         this.jedis.close();
     }
 
     /**
-     * Sends a value to a Redis list using the connection established by this RedisManager.
+     * Prepends a value to a Redis list in database 0, creating the list if absent.
      *
      * @param list the name of the Redis list to which to send the value
      * @param val  the value to send to the Redis list
@@ -91,14 +109,14 @@ public class RedisManager implements AutoCloseable {
      * Removes and returns a random member from a Redis set using the connection established by this RedisManager.
      *
      * @param set the name of the Redis set from which to remove and return a random member
-     * @return the randomly removed member from the Redis set
+     * @return the randomly removed member, or null when the set is empty or absent
      */
     public String spop(String set) {
         return this.jedis.spop(set);
     }
 
     /**
-     * Adds a member to a Redis set using the connection established by this RedisManager.
+     * Adds a member to a Redis set in database 0.
      * <p>
      * If the specified set does not exist, a new set is created and the member is added to it.
      * If the set already exists and contains the specified member, the command has no effect.
@@ -127,7 +145,7 @@ public class RedisManager implements AutoCloseable {
      * Gets the length of a Redis list.
      *
      * @param list the name of the Redis list
-     * @return the length of the list
+     * @return the length of the list, or zero if the key is absent
      */
     public long llen(String list) {
         return this.jedis.llen(list);
@@ -137,7 +155,7 @@ public class RedisManager implements AutoCloseable {
      * Gets the number of members in a Redis set.
      *
      * @param set the name of the Redis set
-     * @return the number of members in the set
+     * @return the number of members in the set, or zero if the key is absent
      */
     public long scard(String set) {
         return this.jedis.scard(set);
@@ -147,19 +165,21 @@ public class RedisManager implements AutoCloseable {
      * Gets a range of elements from a Redis list.
      *
      * @param list  the name of the Redis list
-     * @param start the start index of the range
-     * @param end   the end index of the range
-     * @return a List of elements in the specified range
+     * @param start inclusive zero-based index; negative indices count from the tail
+     * @param end inclusive zero-based index; {@code -1} means the last element
+     * @return a detached list in Redis list order, empty for an absent key or empty range;
+     *         later changes to the returned list do not update Redis
      */
     public List<String> lrange(String list, long start, long end) {
         return this.jedis.lrange(list, start, end);
     }
 
     /**
-     * Removes the first count occurrences of elements equal to value from the list stored at key.
+     * Removes occurrences of a value from a list. Positive counts scan from head to tail,
+     * negative counts scan from tail to head, and zero removes every matching element.
      *
      * @param list  the name of the Redis list
-     * @param count the count of elements to be removed
+     * @param count signed maximum removal count, or zero for all occurrences
      * @param value the value to be removed
      * @return the number of removed elements
      */
@@ -171,14 +191,14 @@ public class RedisManager implements AutoCloseable {
      * Gets the value of the specified key.
      *
      * @param key the key
-     * @return the value of the specified key
+     * @return the string value, or null if the key is absent
      */
     public String get(String key) {
         return this.jedis.get(key);
     }
 
     /**
-     * Sets the specified key to the specified value.
+     * Sets or replaces a string value, clearing any existing expiration on the key.
      *
      * @param key   the key
      * @param value the value
@@ -198,7 +218,7 @@ public class RedisManager implements AutoCloseable {
     }
 
     /**
-     * Sends a byte array to a Redis list using the connection established by this RedisManager.
+     * Prepends a binary value to a Redis list in database 0, encoding its key as UTF-8.
      *
      * @param list the name of the Redis list to which to send the byte array
      * @param val  the byte array to send to the Redis list
@@ -209,7 +229,7 @@ public class RedisManager implements AutoCloseable {
     }
 
     /**
-     * Adds a byte array to a Redis set using the connection established by this RedisManager.
+     * Adds a binary value to a Redis set in database 0, encoding its key as UTF-8.
      * <p>
      * If the specified set does not exist, a new set is created and the byte array is added to it.
      * If the set already exists and contains the specified byte array, the command has no effect.
@@ -224,7 +244,8 @@ public class RedisManager implements AutoCloseable {
     }
 
     /**
-     * Sets the specified key to the specified byte array.
+     * Sets or replaces a binary value using a UTF-8 key, clearing any existing expiration.
+     * {@link #get(String)} decodes values as UTF-8; it is not a lossless binary getter.
      *
      * @param key   the key
      * @param value the byte array
@@ -237,7 +258,8 @@ public class RedisManager implements AutoCloseable {
      * Gets a set of elements from a Redis set.
      *
      * @param set the name of the Redis set
-     * @return a Set of elements in the specified set
+     * @return detached members with no ordering guarantee, empty if the key is absent;
+     *         changes to the returned set do not update Redis
      */
     public Set<String> smembers(String set) {
         return this.jedis.smembers(set);

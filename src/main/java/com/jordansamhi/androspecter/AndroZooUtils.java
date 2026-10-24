@@ -41,7 +41,9 @@ import java.text.DecimalFormat;
  */
 
 /**
- * Utility class for downloading APK files from AndroZoo using the provided API key and path.
+ * Downloads APKs from AndroZoo into a caller-selected directory. Download errors are
+ * logged through the library facade and represented by a null result. The caller owns
+ * successful files and their cleanup; constructing this helper performs no download.
  *
  * @author Jordan Samhi
  */
@@ -55,10 +57,11 @@ public class AndroZooUtils {
     private final String path;
 
     /**
-     * Constructs a new AndroZooUtils object with the given API key and path to store downloaded APKs.
+     * Stores the API key and download directory without validating them or creating the directory.
+     * Configuration and filesystem failures are reported when {@link #getApk(String)} runs.
      *
-     * @param apiKey the API key for accessing the AndroZoo API
-     * @param path   the path where downloaded APKs will be stored
+     * @param apiKey API key required for a new download; use a non-null valid key
+     * @param path path to an existing writable directory, required to be non-null at download time
      */
     public AndroZooUtils(String apiKey, String path) {
         this.apiKey = apiKey;
@@ -67,9 +70,11 @@ public class AndroZooUtils {
 
     /**
      * Constructs a new AndroZooUtils object with the given API key and sets
-     * the path to store downloaded APK files to the system temporary folder.
+     * the download directory to the current {@code java.io.tmpdir} property.
+     * The property is captured now; no private subdirectory is created or reserved.
      *
-     * @param apiKey the API key for accessing the AndroZoo API
+     * @param apiKey API key required for a new download; use a non-null valid key
+     * @throws SecurityException if access to the temporary-directory property is denied
      */
     public AndroZooUtils(String apiKey) {
         this.apiKey = apiKey;
@@ -77,10 +82,22 @@ public class AndroZooUtils {
     }
 
     /**
-     * Downloads an APK file with the given SHA-256 hash from AndroZoo, using the provided API key and path to store the file.
+     * Returns an existing readable, nonempty {@code <sha256>.apk} in the configured directory,
+     * or downloads that file without replacing an existing destination. The supplied hash
+     * must contain exactly 64 hexadecimal characters; its case is retained in the filename.
+     * Existing and downloaded files are not checked against the hash or parsed as APKs.
+     * <p>A new download uses a temporary file, checks that it is nonempty and matches the
+     * declared content length when available, then moves it to the final path. Partial
+     * files are removed on failure where possible. The caller owns the returned file,
+     * including a pre-existing file returned without downloading.
+     * <p>Connection and individual read timeouts are 15 and 60 seconds respectively,
+     * not a total runtime limit. Thread interruption is checked between I/O operations;
+     * a blocked read can delay cancellation. Interrupt status is preserved when observed.
      *
-     * @param sha256 the SHA-256 hash of the APK file to download
-     * @return the path of the downloaded APK file, or null if the download was unsuccessful or if the folder is not writeable
+     * @param sha256 64-character hexadecimal APK identifier
+     * @return downloaded or cached file path, absolute only if the configured directory is absolute,
+     *         or null on invalid input, interruption, HTTP failure, or download/filesystem error;
+     *         these failures are logged rather than rethrown
      */
     public String getApk(String sha256) {
         HttpURLConnection httpConn = null;
@@ -175,7 +192,17 @@ public class AndroZooUtils {
         return null;
     }
 
-    /** Opens the download connection; subclasses can supply a connection for testing. */
+    /**
+     * Opens an unconnected HTTP connection. {@link #getApk(String)} configures its request
+     * and timeouts, consumes its streams, and disconnects it. Subclasses may supply a
+     * compatible connection, for example for a local test server.
+     *
+     * @param url non-null HTTP(S) download URL, including the API key and APK identifier
+     * @return non-null connection whose lifecycle is transferred to {@code getApk}
+     * @throws IOException if a connection cannot be opened
+     * @throws NullPointerException if {@code url} is null
+     * @throws ClassCastException if the URL protocol does not provide an HTTP connection
+     */
     protected HttpURLConnection openConnection(URL url) throws IOException {
         return (HttpURLConnection) url.openConnection();
     }

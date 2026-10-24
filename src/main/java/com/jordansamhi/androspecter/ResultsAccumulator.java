@@ -35,7 +35,8 @@ public class ResultsAccumulator {
     private final SortedMap<String, Integer> metrics;
 
     /**
-     * Creates independent metrics for one analysis.
+     * Creates an accumulator with an empty application label and no metrics.
+     * Counters are caller-managed; this class does not collect analysis events automatically.
      */
     public ResultsAccumulator() {
         this.appName = "";
@@ -63,9 +64,9 @@ public class ResultsAccumulator {
     }
 
     /**
-     * Getter for application name.
+     * Returns the caller-assigned application label.
      *
-     * @return application name
+     * @return non-null label, initially empty and reset to empty by {@link #reset()}
      */
     public synchronized String getAppName() {
         return appName;
@@ -106,7 +107,7 @@ public class ResultsAccumulator {
      * Method to set a specific metric to a certain value.
      *
      * @param metric the metric to set
-     * @param value  the value to set
+     * @param value value to set; negative values are accepted
      * @throws NullPointerException if {@code metric} is null
      */
     public synchronized void setMetric(String metric, int value) {
@@ -125,8 +126,10 @@ public class ResultsAccumulator {
     /**
      * Returns the application name followed by metric values sorted by metric name.
      * The same metric names therefore produce the same column order across runs.
+     * The label is CSV-escaped when needed. No header or trailing newline is included;
+     * keep metric sets consistent between rows, or use {@link #snapshot()} to retain names.
      *
-     * @return a string of metrics in a vector form
+     * @return a CSV row containing the application label followed by the sorted metric values
      */
     public synchronized String getVectorResults() {
         StringJoiner sj = new StringJoiner(",");
@@ -168,7 +171,9 @@ public class ResultsAccumulator {
      * Immutable metrics suitable for retention or serialization after analysis.
      *
      * @param appName application label, possibly empty but never null
-     * @param metrics detached, unmodifiable map ordered alphabetically by metric name
+     * @param metrics detached, unmodifiable map ordered alphabetically by metric name;
+     *                snapshots taken from an accumulator contain non-null values, but direct
+     *                construction permits null values and preserves them
      */
     public record Snapshot(String appName, Map<String, Integer> metrics) {
         /**

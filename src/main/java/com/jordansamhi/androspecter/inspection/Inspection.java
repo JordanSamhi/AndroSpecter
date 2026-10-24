@@ -25,8 +25,21 @@ import java.util.function.Predicate;
  * allow structural edits during traversal, but removed objects may still be visited and newly added objects
  * may not be visited. Mutating callbacks must preserve valid bodies and manage any cached analysis results.
  * Prefer an explicit transformation for mutations that should invalidate a managed analysis's call graph.
- * <p>Callbacks run class, method, statement, then invocation; registrations at each level retain their order.
+ * <p>Traversal is nested: for each selected class, class callbacks run before its selected methods;
+ * for each method, method callbacks precede its units; for each unit, statement callbacks precede
+ * invocation callbacks. Registrations at each level retain their order. Class, method, and unit
+ * enumeration follow Soot's current collection order, not a separately sorted order.
  * Immutability covers the registration lists, not mutable state captured by predicates or callbacks.
+ * A plan may be reused, but callers must ensure its callbacks and predicates are suitable for each
+ * scene and thread; registering a callback does not detach any Soot objects it captures.
+ * <pre>{@code
+ * Inspection plan = Inspection.builder()
+ *         .classes(clazz -> clazz.getName().startsWith("com.example."))
+ *         .onInvoke((caller, statement, invocation) ->
+ *                 System.out.println(invocation.getMethodRef().getSignature()))
+ *         .build();
+ * plan.run(context); // A valid AnalysisContext on its owning thread is required.
+ * }</pre>
  */
 public final class Inspection {
     /** Receives an invocation expression together with its containing method and statement. */
@@ -34,7 +47,9 @@ public final class Inspection {
     public interface InvocationVisitor {
         /**
          * Visits an invocation without requiring the inspector to resolve its target method.
-         * All arguments are borrowed from the current scene and share its lifetime.
+         * All arguments are non-null and borrowed from the current scene and share its lifetime.
+         * The callback executes synchronously on the inspection thread. Failures propagate
+         * immediately from {@link Inspection#run(AnalysisContext)} without rollback.
          *
          * @param caller method containing the invocation
          * @param statement statement containing {@code invocation}
@@ -71,6 +86,9 @@ public final class Inspection {
     /**
      * Visits selected classes and methods in the current scene on the context's owning thread.
      * Class predicates run before method enumeration, and method predicates run before body loading.
+     * Method predicates are evaluated only when at least one method, statement, or invocation
+     * callback is registered. Statement and invocation callbacks can trigger body retrieval;
+     * class and method callbacks alone do not, unless their own code loads bodies.
      * A plan with no callbacks only checks the context; it evaluates no predicates and loads no bodies.
      * Context validity and cancellation are checked around each user callback and predicate.
      * Callback, predicate, and Soot body-loading failures propagate immediately without undoing earlier work.
@@ -139,7 +157,11 @@ public final class Inspection {
         return true;
     }
 
-    /** Mutable callback registration builder; each build copies its current registration lists. */
+    /**
+     * Mutable callback registration builder created by {@link Inspection#builder()}.
+     * It is not thread-safe. Each build copies its current registration lists, so the builder
+     * may be reused without changing previously built plans.
+     */
     public static final class Builder {
         private final List<Predicate<SootClass>> classes = new ArrayList<>();
         private final List<Predicate<SootMethod>> methods = new ArrayList<>();
@@ -203,7 +225,8 @@ public final class Inspection {
 
         /**
          * Appends a callback for every selected method, including abstract and native methods.
-         * The inspector does not load bodies for method callbacks alone.
+         * The inspector does not load bodies for method callbacks alone. Method predicates
+         * do not suppress class callbacks; use a class predicate to reject a whole class.
          *
          * @param visitor callback receiving a borrowed method from the current scene
          * @return this builder
