@@ -10,6 +10,8 @@ documentation alongside the declaration and update it whenever behavior changes.
 - Explain what the operation does and any required setup.
 - Document each parameter with `@param`, non-void results with `@return`, and
   expected failure conditions with `@throws`.
+- Declare public and protected no-argument constructors explicitly and document
+  them. Class-level descriptions do not document compiler-generated constructors.
 - State relevant nullability, mutation, ownership, thread, cancellation, and
   Soot lifecycle constraints. Say whether returned values survive a reset.
 - Document record components with class-level `@param` tags so their generated
@@ -17,7 +19,9 @@ documentation alongside the declaration and update it whenever behavior changes.
 - Include a short usage example when setup or composition is not obvious.
 
 Before committing API changes, generate and validate the public documentation
-with JDK 17 or later:
+with JDK 17 or later, including the JDK used for publication. Check `mvn -version`:
+Maven may use a different Java runtime from the shell's `java` command, and newer
+Javadoc tools can report additional documentation warnings.
 
 ```sh
 mvn org.apache.maven.plugins:maven-javadoc-plugin:3.4.0:javadoc \

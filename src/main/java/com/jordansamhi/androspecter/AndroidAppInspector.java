@@ -5,7 +5,7 @@ import com.jordansamhi.androspecter.inspection.Inspection;
 import soot.*;
 
 /**
- * Legacy visitor adapter. Subclass it using the default no-argument constructor and override only the
+ * Legacy visitor adapter. Subclass it using the no-argument constructor and override only the
  * callbacks needed. All three examination levels are initially enabled; disable unused levels to avoid
  * unnecessary body loading. Prefer {@link Inspection} for explicit callback registration and filtering.
  * By default every loaded scene class is visited, including framework, library, and dummy-main classes.
@@ -25,6 +25,14 @@ public abstract class AndroidAppInspector {
     private boolean examineClasses = true;
     private boolean examineMethods = true;
     private boolean examineStatements = true;
+
+    /**
+     * Creates an inspector with class, method, and statement callbacks enabled.
+     * Construction does not initialize Soot or inspect a scene. Override the desired callbacks,
+     * optionally adjust {@link #setExaminationCriteria(boolean, boolean, boolean)}, then invoke
+     * {@link #runIn(AnalysisContext)} on the thread that owns an initialized analysis.
+     */
+    public AndroidAppInspector() {}
 
     /**
      * Receives a class before its method and statement callbacks. The default implementation does nothing.

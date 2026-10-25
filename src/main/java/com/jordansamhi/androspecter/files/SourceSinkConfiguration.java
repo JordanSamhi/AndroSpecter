@@ -148,6 +148,15 @@ public record SourceSinkConfiguration(Set<String> sources, Set<String> sinks) {
         private final Set<String> sinks = new LinkedHashSet<>();
 
         /**
+         * Creates an independent, empty builder, equivalent to {@link SourceSinkConfiguration#builder()}.
+         * No bundled definitions are loaded or added. Add signatures with {@link #source(String)}
+         * and {@link #sink(String)}, or merge a configuration with {@link #include(SourceSinkConfiguration)},
+         * before calling {@link #build()}. Building immediately produces empty source and sink sets.
+         */
+        public Builder() {
+        }
+
+        /**
          * Adds a source signature; repeated signatures are deduplicated when building.
          * Validation is deferred until {@link #build()}.
          *

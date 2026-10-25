@@ -32,6 +32,12 @@ package com.jordansamhi.androspecter.utils;
  */
 public class Constants {
 
+    /**
+     * Creates an instance for compatibility with existing callers and subclasses.
+     * All constants are static and can be accessed through {@code Constants} without an instance.
+     */
+    public Constants() {}
+
     /** Classpath resource containing the bundled library-package prefixes. */
     public static final String LIBRARIES_FILE = "/libraries.txt";
     /** Classpath resource containing the bundled system-package prefixes. */

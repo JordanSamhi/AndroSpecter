@@ -18,6 +18,9 @@ waits for publication to complete; no manual Publish click is required.
 
 Use JDK 17 or later and Maven 3.6.3 or later in the Maven 3 series.
 Maven 4 is not supported by this publishing plugin.
+Check `mvn -version` for the JDK Maven actually uses; it may differ from
+`java -version`. Run these checks with the same JDK used for deployment so that
+newer Javadoc checks are covered as well as the Java 17 compatibility baseline.
 Before preparing a release, run the tests, generate strict public/protected API Javadoc, and
 build the independently maintained examples:
 

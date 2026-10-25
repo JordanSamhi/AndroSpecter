@@ -39,6 +39,14 @@ import soot.options.Options;
 public class SootConfig implements IInfoflowConfig {
 
     /**
+     * Creates a stateless FlowDroid configuration hook without changing Soot options.
+     * Supply the instance to FlowDroid's configuration API; its
+     * {@link #setSootOptions(Options, InfoflowConfiguration)} callback applies the options
+     * when invoked while the caller owns the Soot scene.
+     */
+    public SootConfig() {}
+
+    /**
      * Enables phantom references, whole-program mode, and the call-graph phase, and
      * disables Soot file output. This implementation always modifies {@link Options#v()};
      * it ignores both supplied arguments and does not reset other existing options.

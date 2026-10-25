@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Generates the {@code LogCheckerClass} runtime helper used by {@link Logger} in the current Soot scene.
- * Prefer {@link #v()} so repeated callers share the generator's helper identity. The implicit no-argument
+ * Prefer {@link #v()} so repeated callers share the generator's helper identity. The {@link #LogCheckerClass()}
  * constructor creates an independent generator; it does not generate a helper, and later generation can
  * conflict with a helper owned by a different generator.
  * <p>The generated helper deduplicates messages through its static set, regardless of tag, and emits them
@@ -26,6 +26,15 @@ public class LogCheckerClass {
 
     private SootClass clazz;
     private static LogCheckerClass instance;
+
+    /**
+     * Creates an independent generator without generating a helper, resolving dependencies,
+     * or changing the Soot scene. Call {@link #generateClass()} on the owning analysis thread
+     * when the scene and runtime classpath are ready. Prefer {@link #v()} when sharing a scene:
+     * later generation rejects a non-phantom helper owned by another generator or application.
+     */
+    public LogCheckerClass() {
+    }
 
     /**
      * Returns the shared generator without generating a helper or resolving runtime dependencies.

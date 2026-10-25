@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Caller-owned, thread-safe cancellation source, initially not cancelled. Create a source
  * for each operation, give its {@link #token()} to the operation, and call {@link #cancel()}
  * from the controlling thread when needed. Closing the source also requests cancellation.
- * Its public no-argument constructor creates an independent source. Cancellation is
+ * Its public {@link #CancellationSource()} constructor creates an independent source. Cancellation is
  * permanent, cooperative, and never interrupts a thread or exits the JVM by itself.
  * Keep the source open until the operation finishes; closing it requests cancellation,
  * while closing a registration only removes that callback.
@@ -43,6 +43,15 @@ public final class CancellationSource implements AutoCloseable {
             return register(action);
         }
     };
+
+    /**
+     * Creates an independent, initially uncancelled source with no registered callbacks.
+     * Pass {@link #token()} to operations that should observe this source, then call
+     * {@link #cancel()} or {@link #close()} to request cancellation. Construction starts
+     * no threads and does not associate the source with any particular operation.
+     */
+    public CancellationSource() {
+    }
 
     /**
      * Returns the read-only view shared by all operations observing this source. Each call
