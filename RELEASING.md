@@ -3,7 +3,16 @@
 The `release` profile uses Sonatype's Central Publisher Portal through
 `central-publishing-maven-plugin:0.12.0`. It replaces the retired OSSRH URLs and
 Nexus staging plugin. Ordinary `mvn install` builds remain local and do not activate
-publishing. The current `1.2.0-SNAPSHOT` version remains a development version.
+publishing. Version `2.0.0` is prepared for release; it has not yet been published
+by this checkout. The maintainer's usual command is:
+
+```sh
+mvn clean deploy -P release
+```
+
+With Central credentials and a signing key configured, this command builds,
+signs, uploads, and automatically publishes the release after validation. It
+waits for publication to complete; no manual Publish click is required.
 
 ## Local checks
 
@@ -16,13 +25,24 @@ build the independently maintained examples:
 mvn clean install
 mvn -f examples/pom.xml clean package dependency:copy-dependencies
 mvn -f cli/pom.xml clean verify
-mvn -Prelease -Dgpg.skip=true verify
+mvn -P release -Dgpg.skip=true verify
 ```
 
 The last command checks release packaging, including source and Javadoc JARs,
 without signing or uploading. It does not validate credentials or prove that
 Central will accept a signed release. Inspect the generated API documentation and
-exercise the examples against representative APKs before choosing a release version.
+exercise the examples against representative APKs before publishing the release.
+
+To check the full deploy lifecycle locally without credentials or a signing key:
+
+```sh
+mvn clean deploy -P release -Dcentral.skipUpload=true -Dgpg.skip=true
+```
+
+This creates an **unsigned validation bundle**, installs the build locally, and
+skips uploading. It exercises packaging and bundle generation, but its missing
+signatures make it unsuitable for publication. A signed bundle still needs the
+maintainer's key and Central validation.
 
 ## Maintainer setup
 
@@ -49,8 +69,9 @@ when needed. Central must be able to verify the corresponding public key.
 
 ## Prepare a release
 
-Choose the intended non-snapshot version, update the root POM, the library
-dependency in `examples/pom.xml`, and both the CLI version and `androspecter.version`
+The root, examples, and CLI POMs are aligned on `2.0.0`. For a future release,
+choose the intended non-snapshot version, update the root POM, both the project
+version and library dependency in `examples/pom.xml`, and the CLI version and `androspecter.version`
 in `cli/pom.xml`. Update version references in the README, CLI guide, examples,
 and wiki. Commit these changes under the maintainer's identity. Keep the consumers'
 library dependencies aligned with the artifact being tested.
@@ -58,7 +79,7 @@ library dependencies aligned with the artifact being tested.
 With the release version in place, create the signed bundle locally:
 
 ```sh
-mvn -Prelease -Dcentral.skipUpload=true clean deploy
+mvn clean deploy -P release -Dcentral.skipUpload=true
 ```
 
 This command runs the build and installs artifacts in the local Maven repository,
@@ -69,14 +90,18 @@ and checksums. Do not pass `-Dgpg.skip=true` when preparing a publishable bundle
 When ready to send the release to Central:
 
 ```sh
-mvn -Prelease clean deploy
+mvn clean deploy -P release
 ```
 
-The profile uploads the release and waits for Central's validation. Automatic
-publication is disabled: complete publication from the Portal after reviewing the
-validated deployment. Confirm that the released Maven coordinates resolve before
+The profile sets `autoPublish=true` and `waitUntil=published`: Central publishes
+the release automatically after successful validation, and Maven waits for that
+publication. The plugin's default wait limit is 1800 seconds; increase it with
+`-DwaitMaxTime=SECONDS` when necessary. If Maven times out or loses the connection
+after uploading, inspect the existing deployment in the Portal before retrying:
+the server may still complete publication. Confirm that
+`com.jordansamhi:androspecter:2.0.0` resolves from Maven Central before
 creating the corresponding Git tag/release and moving the checkout to its next
-development version.
+development version. Mark the README and wiki publication status accordingly.
 
 ## Standalone CLI distribution
 
@@ -97,7 +122,7 @@ The launcher can use a downloaded artifact through `ANDROSPECTER_JAR=/path/to/fi
 The same profile routes a `-SNAPSHOT` version to Central's snapshot service.
 Enable snapshots for the namespace in the Portal before deploying them. Snapshot
 deployment makes the development artifact available directly; it does not use the
-release validation and manual publication flow above. `-Dcentral.skipUpload=true`
+release validation and publication flow above. `-Dcentral.skipUpload=true`
 also suppresses snapshot uploads. Keep consumer documentation explicit about
 whether a development build must be installed locally or is actually published.
 

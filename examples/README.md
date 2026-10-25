@@ -1,6 +1,6 @@
 # Runnable Java examples
 
-These eight small programs use **AndroSpecter 1.2.0-SNAPSHOT** on Java 17.
+These eight small programs use **AndroSpecter 2.0.0** on Java 17.
 Analysis programs require an APK and an Android SDK `platforms` directory;
 `PrintApkInfo` needs only an APK, and `GraphQueries` needs only a saved graph.
 They do not require a device, Redis, an AndroZoo account, or network access during analysis.
@@ -28,16 +28,17 @@ mvn -B install
 mvn -B -f examples/pom.xml package dependency:copy-dependencies
 ```
 
-`install` places this checkout's library and POM in the local Maven repository. The examples
-are a separate Maven project, not a root-build module. They depend on that local snapshot;
-the commands do not assume it is published remotely. Reinstall the library and rebuild
+`install` places this checkout's library and POM in the local Maven repository. Version 2.0.0
+is being prepared for release; use this local installation until its Maven Central
+publication is complete. The examples are a separate Maven project, not a root-build module.
+Reinstall the library and rebuild
 the examples after changing its API. For a clean example rebuild, add `clean` before `package`.
 
 The example POM declares:
 
 | Dependency or plugin | Version | Purpose |
 | --- | --- | --- |
-| `com.jordansamhi:androspecter` | `1.2.0-SNAPSHOT` | The locally installed library, including its transitive Soot/FlowDroid dependencies |
+| `com.jordansamhi:androspecter` | `2.0.0` | The locally installed library, including its transitive Soot/FlowDroid dependencies |
 | `com.google.code.gson:gson` | `2.14.0` | Explicit direct dependency used by AnalyzeTaint for JSON |
 | `org.slf4j:slf4j-simple` | `2.0.17` | Runtime logging provider chosen by this example application |
 | `maven-compiler-plugin` | `3.7.0` | Compile with Java release 17 |

@@ -2,9 +2,11 @@
 
 The CLI runs APK metadata extraction, code inspection, call-graph export and queries,
 and taint analysis without writing a Java application. It is a separate application
-built against **AndroSpecter 1.2.0-SNAPSHOT**, with **JDK 17 or later** and
+built against **AndroSpecter 2.0.0**, with **JDK 17 or later** and
 **Maven 3.6.3 or later** for building.
-The development version must be built locally; it is not a published release download.
+Version 2.0.0 is being prepared for release. Until the library's Maven Central
+publication is complete and a CLI release artifact is available, install the library
+locally and build the CLI using the commands below.
 
 ## Build and run
 

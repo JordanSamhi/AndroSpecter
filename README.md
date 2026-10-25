@@ -35,7 +35,7 @@ a **standalone command-line tool** for common analysis and export tasks.
 | Component | Version used by this checkout |
 | --- | --- |
 | Java | 17 or later |
-| AndroSpecter | `1.2.0-SNAPSHOT` — local development build |
+| AndroSpecter | `2.0.0` — prepared for release |
 | Soot | `4.7.1` |
 | FlowDroid | `2.15.1` |
 
@@ -43,8 +43,9 @@ You need Maven to build the library and an Android SDK `platforms` directory
 containing platform JARs for Soot/FlowDroid analyses. Reading APK metadata and
 querying saved graph snapshots require no SDK. A connected Android device is not needed.
 
-**`1.2.0-SNAPSHOT` has not been published to Maven Central.** Install this checkout
-locally before using the examples or depending on this version:
+**Version `2.0.0` is prepared for release; publication is still pending.** Until it
+is available from Maven Central, install this checkout locally before using the
+examples or depending on this version:
 
 ```sh
 git clone https://github.com/JordanSamhi/AndroSpecter.git
@@ -59,7 +60,7 @@ shell. In your application's `pom.xml`, add:
 <dependency>
     <groupId>com.jordansamhi</groupId>
     <artifactId>androspecter</artifactId>
-    <version>1.2.0-SNAPSHOT</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
@@ -253,8 +254,10 @@ Every new or changed public API and protected extension point must have usage-or
 [CONTRIBUTING.md](CONTRIBUTING.md) for the documentation requirements.
 
 The [release guide](RELEASING.md) describes local packaging checks, signing, and
-the Central Publisher Portal setup. Updating this checkout does not publish a new
-Maven artifact.
+the Central Publisher Portal setup. For a configured maintainer environment,
+`mvn clean deploy -P release` signs, uploads, and automatically publishes the
+release after Central validation, then waits for publication. Updating this
+checkout alone does not publish a Maven artifact.
 
 ## License and contact
 
