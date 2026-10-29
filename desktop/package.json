@@ -1,0 +1,60 @@
+{
+  "name": "androspecter-desktop",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A desktop workspace for Android static analysis",
+  "author": "Jordan Samhi <j.samhi@me.com>",
+  "license": "LGPL-2.1-or-later",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/electron-smoke.cjs",
+    "dist": "node scripts/package.cjs",
+    "dist:dir": "node scripts/package.cjs --dir"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "jsdom": "26.1.0",
+    "@playwright/test": "1.64.1"
+  },
+  "build": {
+    "appId": "com.jordansamhi.androspecter.desktop",
+    "productName": "AndroSpecter",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": [
+        "tar.gz"
+      ],
+      "category": "Development",
+      "icon": "assets/icon.png"
+    }
+  }
+}

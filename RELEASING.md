@@ -3,8 +3,8 @@
 The `release` profile uses Sonatype's Central Publisher Portal through
 `central-publishing-maven-plugin:0.12.0`. It replaces the retired OSSRH URLs and
 Nexus staging plugin. Ordinary `mvn install` builds remain local and do not activate
-publishing. Version `2.0.0` is prepared for release; it has not yet been published
-by this checkout. The maintainer's usual command is:
+publishing. Library version `2.0.0` is published on Maven Central; do not redeploy
+that immutable version. For a new library release, the maintainer's usual command is:
 
 ```sh
 mvn clean deploy -P release
@@ -13,6 +13,11 @@ mvn clean deploy -P release
 With Central credentials and a signing key configured, this command builds,
 signs, uploads, and automatically publishes the release after validation. It
 waits for publication to complete; no manual Publish click is required.
+
+The optional Electron desktop application is packaged separately with
+`npm run dist` in `desktop/`. This includes the CLI and a Java runtime for the
+build host. See [desktop packaging](desktop/README.md#package-a-desktop-application).
+Desktop builds do not invoke the Maven publishing profile or upload artifacts.
 
 ## Local checks
 

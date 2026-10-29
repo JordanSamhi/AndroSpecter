@@ -28,9 +28,9 @@ mvn -B install
 mvn -B -f examples/pom.xml package dependency:copy-dependencies
 ```
 
-`install` places this checkout's library and POM in the local Maven repository. Version 2.0.0
-is being prepared for release; use this local installation until its Maven Central
-publication is complete. The examples are a separate Maven project, not a root-build module.
+`install` places this checkout's library and POM in the local Maven repository.
+Version 2.0.0 is also available from Maven Central, so local installation is only
+required when using unpublished library changes. The examples are a separate Maven project, not a root-build module.
 Reinstall the library and rebuild
 the examples after changing its API. For a clean example rebuild, add `clean` before `package`.
 

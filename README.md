@@ -4,17 +4,20 @@
 
 # AndroSpecter
 
-**Android static analysis as a Java library or command-line tool.**
+**Android static analysis as a Java library, command-line tool, or desktop application.**
 
 AndroSpecter wraps Soot and FlowDroid to help you build call graphs, inspect classes and invocations, run
 source-to-sink taint analyses, and compose instrumentation. Use it as a **Java library**,
 where your application controls execution, cancellation, logging, and output, or as
-a **standalone command-line tool** for common analysis and export tasks.
+a **standalone command-line tool** for common analysis and export tasks. The optional
+**Electron desktop application** provides a local workspace for APK overview, code
+inspection, and interactive call-graph exploration.
 
 [Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started) ·
 [Wiki](https://github.com/JordanSamhi/AndroSpecter/wiki) ·
 [Runnable examples](examples/README.md) ·
 [Command-line tool](cli/README.md) ·
+[Desktop application](desktop/README.md) ·
 [Contributing](CONTRIBUTING.md)
 
 ## What you can do
@@ -35,7 +38,7 @@ a **standalone command-line tool** for common analysis and export tasks.
 | Component | Version used by this checkout |
 | --- | --- |
 | Java | 17 or later |
-| AndroSpecter | `2.0.0` — prepared for release |
+| AndroSpecter | `2.0.0` |
 | Soot | `4.7.1` |
 | FlowDroid | `2.15.1` |
 
@@ -43,9 +46,8 @@ You need Maven to build the library and an Android SDK `platforms` directory
 containing platform JARs for Soot/FlowDroid analyses. Reading APK metadata and
 querying saved graph snapshots require no SDK. A connected Android device is not needed.
 
-**Version `2.0.0` is prepared for release; publication is still pending.** Until it
-is available from Maven Central, install this checkout locally before using the
-examples or depending on this version:
+**Version `2.0.0` is available from Maven Central.** Add the dependency below to use
+the published library. To build or develop this checkout locally:
 
 ```sh
 git clone https://github.com/JordanSamhi/AndroSpecter.git
@@ -78,6 +80,34 @@ configuration. If your application has no provider yet, it can select one:
 
 Use one compatible SLF4J 2.x provider. See [Getting started](https://github.com/JordanSamhi/AndroSpecter/wiki/Getting-started)
 for a complete Maven setup and the distinction between local and published versions.
+
+## Desktop application
+
+[AndroSpecter Desktop](desktop/README.md) is an optional Electron application for
+macOS, Windows, and Linux. It opens in its own native window and runs locally,
+without a web server, browser tab, account, or APK upload.
+
+- Open an APK and read its manifest, permissions, and components.
+- Search application classes and methods, then build a scoped call graph.
+- Navigate callers and callees, inspect call sites, and find shortest call paths.
+- Open saved graph JSON without an SDK; export JSON, DOT, interactive HTML, or a
+  run record containing configuration and APK identity.
+- Configure Java, SDK location, heap, and a hard time limit; cancel a running JVM.
+
+To launch from source, install Node.js 22.12 or later, then run:
+
+```sh
+mvn -B -f cli/pom.xml package
+cd desktop
+npm ci
+npm start
+```
+
+Source launches need Java 17 or later. Packaged desktop builds include their own
+Java runtime. Code inspection and APK graph construction require an Android SDK
+`platforms` directory; the app checks common SDK locations and offers a native
+folder picker. See the [desktop guide](desktop/README.md) for native packaging,
+testing, and the scope of this first GUI. The library has no Electron dependency.
 
 ## Standalone command-line tool
 
