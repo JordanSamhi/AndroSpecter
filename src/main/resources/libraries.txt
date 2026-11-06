@@ -4086,7 +4086,7 @@ com.bendb.influx
 com.bendb.placeholders
 com.bendb.thrifty
 com.benfante.paypal
-com.benjaminsproule.swagger
+ com.benjaminsproule.swagger
 com.benmccann
 com.bennyhuo
 com.benny.study.greeting
@@ -7505,6 +7505,7 @@ com.gitee
 com.gitegg.platform
 com.gitenter
 com.git-floater
+                                          com.github
 com.github
 com.githup.liuyanggithup
 com.gitlab
@@ -7512,6 +7513,7 @@ com.givenocode.carouselpicker
 com.gizbel.excel
 com.gizwits
 com.gkatzioura.maven.cloud
+                                          com.gladed.androidgitversion
 com.gladed.androidgitversion
 com.glancebar
 com.glantus
@@ -7553,6 +7555,7 @@ com.glureau
 com.gmail
 com.gmail.blueboxware
 com.gmail.jfkudg.appreciate-aliyun-mirror
+                                          com.gmail.maxcs1990
 com.gmail.maxcs1990
 com.gmail.tsuna0x00.ipfilteringtree4
 com.gmaslowski
@@ -7603,7 +7606,7 @@ com.goodow.realtime
 com.goodow.vertx
 com.google
 com.googlecode
-com.google.protobuf
+                                          com.google.protobuf
 com.gooten
 com.gopai
 com.gordonwong
@@ -8787,6 +8790,7 @@ com.iperlane.reflection-access
 com.ipisces42
 com.ippopay
 com.iprogrammerr
+                                          com.iptech.gradle
 com.iptech.gradle
 com.iptech.gradle.nunit-plugin
 com.iptech.gradle.unity-plugin
@@ -9377,6 +9381,7 @@ com.josesamuel
 com.joshcanfield
 com.joshlong
 com.josketres
+                                          com.jos.utils.codegen
 com.jos.utils.codegen
 com.jounaidr
 com.journeyapps
@@ -9481,6 +9486,7 @@ com.juracus.api
 com.just-ai
 com.just-ai.aimybox
 com.just-ai.jaicf
+                                          com.justai.jaicf.jaicp-build-plugin
 com.justai.jaicf.jaicp-build-plugin
 com.justdavis.karl.jessentials
 com.justifiedsolutions
@@ -9580,7 +9586,7 @@ com.katanox
 com.katujo
 com.kauailabs
 com.kauailabs.first.GradleRIO
-com.kauailabs.first.GradleRIO_kauailabs
+                                          com.kauailabs.first.GradleRIO_kauailabs
 com.kauailabs.navx.frc
 com.kauailabs.vmx.first.hal
 com.kauailabs.vmx.first.phoenix
@@ -10140,7 +10146,7 @@ com.lifeofcoding
 com.lifeomic
 com.lifeonwalden
 com.liferay
-com.liferay.source.formatter
+                                          com.liferay.source.formatter
 com.lifeway
 com.liffft
 com.liftric
@@ -11202,7 +11208,7 @@ com.monator
 com.monday-consulting.maven.plugins
 com.monederobingo
 com.moneycollect
-com.moneyforward.private-repository-plugin
+                                          com.moneyforward.private-repository-plugin
 com.mongodb
 com.monitorjbl
 com.monits
@@ -11627,8 +11633,8 @@ com.netease
 com.netemera
 com.netfalo.raml
 com.netflix
-com.netflix.nebula.info-basic
-com.netflix.nebula.resolution-rules
+ com.netflix.nebula.info-basic
+                                          com.netflix.nebula.resolution-rules
 com.netgrif
 com.netifi
 com.netiq
@@ -12317,6 +12323,7 @@ com.ozwillo
 com.p4square
 com.paas-word.middleware
 com.pablisco.gradle
+                                          com.pablisco.gradle.auto.include
 com.pablisco.gradle.auto.include
 com.pablisco.gradle.automodule
 com.pablisco.gradle.rambuild
@@ -12770,7 +12777,7 @@ com.posadskiy
 com.positiondev.epublib
 com.positiverobot
 com.posoup
-com.possible-triangle
+                                          com.possible-triangle
 com.posthog
 com.posthog.android
 com.posthog.java
@@ -15242,7 +15249,7 @@ com.testrail
 com.test.sample
 com.testsigma
 com.testvagrant
-com.testvagrant.optimus.plugin
+                                          com.testvagrant.optimus.plugin
 com.testyantra.optimize
 com.testzeus
 com.tesults
@@ -15659,6 +15666,7 @@ com.trevjonez
 com.trevjonez.android-components
 com.trevjonez.AndroidGithubReleasePlugin
 com.trevjonez.composer
+                                          com.trevorism.create-project
 com.trevorism.create-project
 com.triangleleft
 com.trib3
@@ -16030,7 +16038,7 @@ com.v5analytics
 com.v5analytics.simpleorm
 com.v5analytics.webster
 com.vaadin
-com.vaadin.flow
+                                          com.vaadin.flow
 com.vackosar
 com.vackosar.gitflowincrementalbuilder
 com.vackosar.gitobsoletebranchremover
@@ -17852,7 +17860,7 @@ de.cpg.oss
 de.crazypokemondev.gsharp
 de.creativecouple.validation
 de.cronn
-de.cronn.gradle-pnpm-plugin
+                                          de.cronn.gradle-pnpm-plugin
 de.crowdcode.kissmda
 de.cschubertcs.latex
 de.cs-dev.ebus
@@ -18713,7 +18721,7 @@ de.saumya.mojo
 de.saxsys
 de.sayayi
 de.sayayi.gradle
-de.sayayi.gradle.mql4-plugin
+ de.sayayi.gradle.mql4-plugin
 de.sayayi.lib
 de.schablinski.activejdbc-gradle-plugin
 de.schauderhaft.degraph
@@ -19792,7 +19800,7 @@ earth.cube
 earth.cube.commons
 earth.cube.github
 earth.levi.dotenv-android
-earth.levi.filter-prerelease
+                                          earth.levi.filter-prerelease
 earth.worldwind
 easyconf
 easymock
@@ -20001,7 +20009,7 @@ ee.keel.gradle
 ee.keel.gradle.JsToolkitBasePlugin
 ee.keel.gradle.JsToolkitPlugin
 ee.keel.gradle.JsToolkitToolsPlugin
-ee.keel.gradle.PhpToolkitToolsPlugin
+                                          ee.keel.gradle.PhpToolkitToolsPlugin
 ee.mn8
 ee.nx-01.tonclient
 ee.omnifish
@@ -21651,7 +21659,6 @@ in.zeromod
 in.zestic
 in.zeta.apollo.android.apollo-services
 in.zhaoj
-io
 io.1533
 io.57blocks
 io.7mind.izumi
@@ -22033,7 +22040,7 @@ io.cloudflight.structurizr
 io.cloudflight.swagger-template
 io.cloudracer
 io.cloudreactor
-io.cloudshiftdev.release
+                                          io.cloudshiftdev.release
 io.cloudslang
 io.cloudsoft.amp
 io.cloudsoft.brooklyn.tosca
@@ -22690,6 +22697,7 @@ io.gitee.zqycl
 io.gitee.zwenbobo
 io.gitee.zxing2021
 io.gitee.zznote
+                                          io.github
 io.github
 io-github-hbase4s
 io.githunb.renxh4
@@ -22792,6 +22800,7 @@ io.hawkei
 io.hawt
 io.hcxprotocol
 io.hdocdb
+                                          io.heapy.gradle.kotlin.repositories
 io.heapy.gradle.kotlin.repositories
 io.heapy.gradle.properties
 io.heartpattern.gradle-code-generator-common
@@ -23906,6 +23915,7 @@ io.spring.gradle
 io.spring.initializr
 io.spring.javadoc
 io.spring.javadoc-aggregate
+                                          io.spring.javaformat
 io.spring.javaformat
 io.springlets
 io.spring.nohttp
@@ -24443,7 +24453,7 @@ it.n-ess.queryable
 it.netgrid
 it.nicolasanti
 it.nicolasfarabegoli
-it.nicolasfarabegoli.conventional-commits
+                                          it.nicolasfarabegoli.conventional-commits
 it.orlov.iuliia
 it.osys
 it.overzoom
@@ -24885,6 +24895,7 @@ kh.org.nbc.bakong_khqr
 kh.org.nbc.test-lib
 kim.donghwan
 kim.hanjie.common
+                                          kim.jeonghyeon
 kim.jeonghyeon
 kim.jeonghyeon.kotlin-simple-api-gradle
 kim.jeonghyeon.kotlin-simple-architecture-gradle
@@ -27165,6 +27176,7 @@ net.objecthunter
 net.objectlab
 net.obvj
 net.oc_soft.msgfmt
+                                          net.ocsoft.nodejs
 net.ocsoft.nodejs
 net.octopvp
 net.octyl
@@ -27753,6 +27765,7 @@ net.wiringbits
 net.wisedream
 net.wissel.salesforce
 net.wombyte
+                                          net.wooga
 net.wooga
 net.worcade
 network.aika
@@ -28377,7 +28390,7 @@ old.neo
 one.block
 one.cafebabe
 one.chest
-one.chest.maven-publish-plugin
+                                          one.chest.maven-publish-plugin
 one.contentbox.boxd
 one.credify.sdk
 one.duckling
@@ -28463,7 +28476,6 @@ opensymphony
 openxp.osxkeychainaccess
 oracle.toplink.essentials
 orbit
-org
 org.1000kit.mp
 org.1000kit.quarkus
 org.10ne.rest
@@ -29946,7 +29958,7 @@ org.fluttercode.datavalve
 org.fluttercode.knappsack
 org.flyte
 org.flywaydb
-org.flywaydb.flyway
+                                          org.flywaydb.flyway
 org.fmiw.plantuml
 org.fnlp
 org.fomkin
@@ -30134,7 +30146,7 @@ org.gowk
 org.gparallelizer
 org.gperfutils
 org.graalvm
-org.graceframework
+                                          org.graceframework
 org.gradle
 org.gradlefx
 org.gradleweaver.plugins.better-build-file-names
@@ -30741,6 +30753,7 @@ org.jesperancinha.parser
 org.jesperancinha.plugins
 org.jessma
 org.jesterj
+                                          org.jetbrains
 org.jetbrains
 org.jetlang
 org.jetlinks
@@ -31238,7 +31251,7 @@ org.liquibase
 org.liquigraph
 org.litesoft
 org.litote
-org.litote.openapi.ktor.client.generator.gradle
+                                          org.litote.openapi.ktor.client.generator.gradle
 org.littlegrid
 org.littleshoot
 org.liveontologies
@@ -32927,6 +32940,7 @@ org.shipkit.release-notes
 org.shipkit.shipkit-auto-version
 org.shipkit.shipkit-changelog
 org.shipkit.shipkit-demo
+                                          org.shipkit.shipkit-gh-release
 org.shipkit.shipkit-gh-release
 org.shipkit.shipkit-github-release
 org.shipkit.single-project
@@ -33167,7 +33181,7 @@ org.spreadme
 org.springblade
 org.springdoc
 org.springframework
-org.springframework.boot
+                                          org.springframework.boot
 org.springjutsu
 org.springmad
 org.springmodules
@@ -33554,7 +33568,7 @@ org.umlatj
 org.umlg
 org.umlgraph
 org.unbescape
-org.unbroken-dome
+                                          org.unbroken-dome
 org.unbroken-dome.aws.codeartifact
 org.unbroken-dome.aws-codeartifact-maven-proxy
 org.unbroken-dome.base62
@@ -34282,7 +34296,7 @@ pub.dsb.framework
 pub.ihub
 pub.ihub.lib
 pub.ihub.plugin
-pub.ihub.plugin.ihub-bom
+ pub.ihub.plugin.ihub-bom
 pub.ingress
 pub.iseekframework
 pub.iyu
@@ -34464,6 +34478,7 @@ ru.circumflex
 ru.cleverpumpkin
 ru.clevertec
 ru.clevertec.checksystem.plugin.pdfprint
+                                          ru.clevertec.file-downloader
 ru.clevertec.file-downloader
 ru.clevertec.gradleplugin
 ru.clevertec.plugin.aspectj.ltw
@@ -34740,7 +34755,7 @@ ru.yoomoney
 ru.yoomoney.gradle.plugins
 ru.yoomoney.sdk
 ru.yoomoney.tech
-ru.yoomoney.tech.moira-trigger-plugin
+                                          ru.yoomoney.tech.moira-trigger-plugin
 ru.zinal
 ru.zinin
 ru.zoommax
@@ -34772,7 +34787,7 @@ scraping-engine
 sc.tyro
 se.akerfeldt
 se.alipsa
-se.alipsa.nexus-release-plugin
+                                          se.alipsa.nexus-release-plugin
 se.ansman
 se.ansman.autoplugin
 se.ansman.kotshi
@@ -36243,6 +36258,7 @@ uk.gov.gchq.stroom.testdata
 uk.gov.hmcts.java
 uk.gov.hmrc
 uk.gov.ida
+                                          uk.gov.justice.hmpps.gradle-spring-boot
 uk.gov.justice.hmpps.gradle-spring-boot
 uk.gov.justice.service.hmpps
 uk.gov.nationalarchives
