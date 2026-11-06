@@ -259,6 +259,22 @@ See [Migration and troubleshooting](https://github.com/JordanSamhi/AndroSpecter/
 for legacy singleton APIs, changed timeout/CLI behavior, backend diagnostics,
 and common setup errors.
 
+## Bundled library list
+
+[`src/main/resources/libraries.txt`](src/main/resources/libraries.txt) contains the
+**36,926 distinct entries** from `AndroLibZoo2026.lst` in
+[AndroLibZoo](https://github.com/JordanSamhi/AndroLibZoo), refreshed on 2026-11-06.
+Whitespace is trimmed, blank lines removed, and duplicates collapsed; all distinct
+entries are retained. This is the list used by `LibrariesManager` and
+`LibraryFilter.knownLibraries()`.
+
+Classification matches package prefixes at dot boundaries and remains a heuristic.
+The 2026 list includes the broad prefix `org`, so the bundled classifier treats all
+`org.*` classes as libraries. Use `LibraryFilter.packages(...)` or
+`LibraryFilter.from(...)` when your analysis needs a different classification policy.
+This source update takes effect when rebuilding AndroSpecter; it does not change
+previously published Maven artifacts or packaged applications.
+
 ## Build, test, and browse the API
 
 ```sh
